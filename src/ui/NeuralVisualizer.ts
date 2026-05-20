@@ -34,12 +34,12 @@ export class NeuralVisualizer {
     this.renderPanel(ctx, x, y, width, height);
 
     ctx.save();
-    ctx.font = '12px "SF Mono", Monaco, monospace';
+    ctx.font = '11px "SF Mono", Monaco, monospace';
     ctx.textBaseline = 'top';
     ctx.fillStyle = PANEL_TITLE_COLOR;
     ctx.fillText('NEURAL VISUALIZER', x + 16, y + 14);
     ctx.fillStyle = PANEL_SUBTITLE_COLOR;
-    ctx.fillText('inputs / hidden / outputs', x + 16, y + 34);
+    ctx.fillText('inputs / hidden / outputs', x + 16, y + 32);
 
     if (snapshot === null) {
       ctx.fillStyle = OUTPUT_LABEL_COLOR;
@@ -67,13 +67,13 @@ export class NeuralVisualizer {
       },
     ];
 
-    const layoutTop = y + 66;
-    const layoutBottom = y + height - 20;
-    const layerXs = this.getLayerXs(x + 30, x + width - 30, layers.length);
+    const layoutTop = y + 58;
+    const layoutBottom = y + height - 16;
+    const layerXs = this.getLayerXs(x + 40, x + width - 42, layers.length);
     const layerNodePositions = layers.map((layer, index) =>
       this.getLayerNodePositions(
         layerXs[index],
-        layoutTop + 18,
+        layoutTop + 20,
         layoutBottom - 12,
         layer.activations.length
       )
@@ -104,7 +104,7 @@ export class NeuralVisualizer {
 
       ctx.fillStyle = PANEL_SUBTITLE_COLOR;
       ctx.textAlign = 'center';
-      ctx.fillText(layer.title, layerXs[layerIndex], layoutTop - 8);
+      ctx.fillText(layer.title, layerXs[layerIndex], layoutTop - 6);
 
       for (let nodeIndex = 0; nodeIndex < nodes.length; nodeIndex += 1) {
         this.renderNode(
@@ -194,7 +194,7 @@ export class NeuralVisualizer {
     activation: number,
     label: string | null
   ): void {
-    const radius = label === null ? 11 : 13;
+    const radius = label === null ? 9 : 11;
     const intensity = clamp(activation, 0, 1);
 
     ctx.fillStyle = withAlpha('#0d1b20', 0.96);
@@ -216,7 +216,7 @@ export class NeuralVisualizer {
     ctx.fillStyle = OUTPUT_LABEL_COLOR;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = label === null ? '10px "SF Mono", Monaco, monospace' : '11px "SF Mono", Monaco, monospace';
+    ctx.font = label === null ? '9px "SF Mono", Monaco, monospace' : '10px "SF Mono", Monaco, monospace';
     ctx.fillText(label ?? activation.toFixed(2), node.x, node.y);
   }
 }

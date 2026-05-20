@@ -40,15 +40,15 @@ export class Hud {
   }
 
   public render(ctx: CanvasRenderingContext2D, data: HudRenderData): void {
-    const statusPanelX = 16;
-    const statusPanelY = 16;
-    const statusPanelWidth = 266;
-    const statusPanelHeight = 334;
-    const neuralPanelMargin = 16;
-    const neuralPanelX = statusPanelX + statusPanelWidth + neuralPanelMargin;
-    const neuralPanelY = 16;
-    const neuralPanelWidth = Math.max(360, data.width - neuralPanelX - 16);
-    const neuralPanelHeight = Math.min(340, Math.max(280, data.height - 32));
+    const margin = 16;
+    const statusPanelX = margin;
+    const statusPanelY = margin;
+    const statusPanelWidth = Math.min(232, Math.max(196, data.width * 0.19));
+    const statusPanelHeight = 316;
+    const neuralPanelWidth = Math.min(520, Math.max(360, data.width * 0.3));
+    const neuralPanelHeight = Math.min(248, Math.max(212, data.height * 0.22));
+    const neuralPanelX = data.width - neuralPanelWidth - margin;
+    const neuralPanelY = margin;
 
     this.renderStatusPanel(
       ctx,
@@ -89,41 +89,41 @@ export class Hud {
     ctx.fillRect(x, y, width, height);
     ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
 
-    ctx.font = '12px "SF Mono", Monaco, monospace';
+    ctx.font = '11px "SF Mono", Monaco, monospace';
     ctx.textBaseline = 'top';
     ctx.fillStyle = PANEL_TEXT_COLOR;
     ctx.fillText(PANEL_TITLE, x + 12, y + 12);
-    ctx.fillText(`FPS ${data.framesPerSecond.toFixed(1)}`, x + 12, y + 36);
+    ctx.fillText(`FPS ${data.framesPerSecond.toFixed(1)}`, x + 12, y + 34);
 
     ctx.fillStyle = statusColor;
-    ctx.fillText(`STATE ${statusLabel}`, x + 12, y + 58);
+    ctx.fillText(`STATE ${statusLabel}`, x + 12, y + 54);
 
     ctx.fillStyle = controlModeColor;
-    ctx.fillText(`MODE ${data.controlMode.toUpperCase()}  [M]`, x + 12, y + 80);
+    ctx.fillText(`MODE ${data.controlMode.toUpperCase()}  [M]`, x + 12, y + 74);
 
     ctx.fillStyle = PANEL_TEXT_COLOR;
     ctx.fillText(
       `SPEED ${Math.abs(data.speed).toFixed(1)} ${getVelocityDirectionLabel(data.speed)}`,
       x + 12,
-      y + 102
+      y + 94
     );
-    ctx.fillText(`DIST ${data.traveledDistance.toFixed(1)}`, x + 12, y + 124);
-    ctx.fillText(`TRAFFIC ${data.trafficCount}`, x + 12, y + 146);
-    ctx.fillText(`T SPEED ${data.trafficTargetSpeed.toFixed(1)}`, x + 12, y + 168);
+    ctx.fillText(`DIST ${data.traveledDistance.toFixed(1)}`, x + 12, y + 114);
+    ctx.fillText(`TRAFFIC ${data.trafficCount}`, x + 12, y + 134);
+    ctx.fillText(`T SPEED ${data.trafficTargetSpeed.toFixed(1)}`, x + 12, y + 154);
 
     ctx.fillStyle = deltaColor;
-    ctx.fillText(`DELTA ${closingDelta.toFixed(1)}`, x + 12, y + 190);
+    ctx.fillText(`DELTA ${closingDelta.toFixed(1)}`, x + 12, y + 174);
 
     ctx.fillStyle = PANEL_MUTED_TEXT_COLOR;
-    ctx.fillText(`L SPD ${data.laneSpeedLabel}`, x + 12, y + 212);
-    ctx.fillText(`S HIT ${data.sensorHitCount}`, x + 12, y + 234);
+    ctx.fillText(`L SPD ${data.laneSpeedLabel}`, x + 12, y + 196);
+    ctx.fillText(`S HIT ${data.sensorHitCount}`, x + 12, y + 216);
     ctx.fillText(
       `CTRL ${formatControlState(data.controlState)}`,
       x + 12,
-      y + 256
+      y + 236
     );
 
-    this.renderSensorStrip(ctx, x + 12, y + 292, width - 24, data.sensorReadings);
+    this.renderSensorStrip(ctx, x + 12, y + 270, width - 24, data.sensorReadings);
 
     ctx.restore();
   }
@@ -136,9 +136,9 @@ export class Hud {
     sensorReadings: readonly number[]
   ): void {
     const slotCount = Math.max(1, sensorReadings.length);
-    const gap = 6;
+    const gap = 5;
     const slotWidth = (width - gap * (slotCount - 1)) / slotCount;
-    const slotHeight = 26;
+    const slotHeight = 22;
 
     for (let index = 0; index < slotCount; index += 1) {
       const reading = sensorReadings[index] ?? 0;
