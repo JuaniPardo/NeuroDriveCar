@@ -167,7 +167,7 @@ export class Game implements Updatable, Renderable {
 
   private renderDebugOverlay(ctx: CanvasRenderingContext2D): void {
     const panelWidth = 236;
-    const panelHeight = 272;
+    const panelHeight = 304;
     const x = 16;
     const y = 16;
 
@@ -202,14 +202,24 @@ export class Game implements Updatable, Renderable {
     );
     ctx.fillText(`LANE 1 ${this.road.getLaneCenter(0).toFixed(1)}`, x + 12, y + 178);
     ctx.fillText(`TRAFFIC ${this.trafficManager.getActiveCount()}`, x + 12, y + 194);
-    ctx.fillText(`LANES ${this.trafficManager.getLaneDebugLabel()}`, x + 12, y + 210);
-    ctx.fillText(`STATE ${this.playerCar.damaged ? 'DAMAGED' : 'ACTIVE'}`, x + 12, y + 226);
+    ctx.fillText(
+      `T SPEED ${this.trafficManager.getTargetSpeed().toFixed(1)}`,
+      x + 12,
+      y + 210
+    );
+    ctx.fillText(
+      `DELTA ${(Math.abs(this.playerCar.speed) - this.trafficManager.getTargetSpeed()).toFixed(1)}`,
+      x + 12,
+      y + 226
+    );
+    ctx.fillText(`LANES ${this.trafficManager.getLaneDebugLabel()}`, x + 12, y + 242);
+    ctx.fillText(`STATE ${this.playerCar.damaged ? 'DAMAGED' : 'ACTIVE'}`, x + 12, y + 258);
     ctx.fillText(
       `IMPACT ${this.getImpactLabel()}`,
       x + 12,
-      y + 242
+      y + 274
     );
-    ctx.fillText('RESTART R', x + 12, y + 258);
+    ctx.fillText('RESTART R', x + 12, y + 290);
 
     ctx.restore();
   }

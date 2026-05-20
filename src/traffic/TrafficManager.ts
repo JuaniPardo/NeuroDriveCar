@@ -8,7 +8,7 @@ const TRAFFIC_SPAWN_MARGIN = 24;
 const TRAFFIC_SPAWN_DISTANCE = 1_400;
 const TRAFFIC_DESPAWN_DISTANCE = 420;
 const TRAFFIC_ROW_SPACING = 260;
-const TRAFFIC_SPEED = DEFAULT_CAR_PHYSICS.maxForwardSpeed * 0.8;
+const TRAFFIC_SPEED = -DEFAULT_CAR_PHYSICS.maxForwardSpeed * 0.7;
 const TRAFFIC_CAR_WIDTH = 40;
 const TRAFFIC_CAR_HEIGHT = 72;
 const TRAFFIC_COLLISION_MARGIN = 18;
@@ -53,7 +53,7 @@ export class TrafficManager {
 
   public reset(playerCar: Car): void {
     this.clear();
-    this.nextSpawnY = playerCar.y + this.getInitialSpawnGap(playerCar);
+    this.nextSpawnY = playerCar.y - this.getInitialSpawnGap(playerCar);
     this.patternIndex = 0;
     this.ensureTrafficAhead(playerCar.x, playerCar.y);
   }
@@ -140,12 +140,16 @@ export class TrafficManager {
       .join(' ');
   }
 
-  private ensureTrafficAhead(playerX: number, playerY: number): void {
-    const spawnLimitY = playerY + TRAFFIC_SPAWN_DISTANCE;
+  public getTargetSpeed(): number {
+    return Math.abs(TRAFFIC_SPEED);
+  }
 
-    while (this.nextSpawnY <= spawnLimitY) {
+  private ensureTrafficAhead(playerX: number, playerY: number): void {
+    const spawnLimitY = playerY - TRAFFIC_SPAWN_DISTANCE;
+
+    while (this.nextSpawnY >= spawnLimitY) {
       this.spawnPatternRow(playerX, playerY);
-      this.nextSpawnY += TRAFFIC_ROW_SPACING;
+      this.nextSpawnY -= TRAFFIC_ROW_SPACING;
       this.patternIndex =
         (this.patternIndex + 1) % TRAFFIC_PATTERN.length;
     }
@@ -214,7 +218,7 @@ export class TrafficManager {
     for (let readIndex = 0; readIndex < this.vehicles.length; readIndex += 1) {
       const vehicle = this.vehicles[readIndex];
 
-      if (vehicle.car.y < playerY - TRAFFIC_DESPAWN_DISTANCE) {
+      if (vehicle.car.y > playerY + TRAFFIC_DESPAWN_DISTANCE) {
         vehicle.car.destroy();
         continue;
       }
