@@ -2,13 +2,14 @@ import { Camera } from './Camera';
 import { Loop } from './Loop';
 import type { Renderable, Updatable } from './types';
 import { Road } from '../world/Road';
+import { Car } from '../car/Car';
 
 const BACKGROUND_TOP_COLOR = '#081114';
 const BACKGROUND_BOTTOM_COLOR = '#020507';
 const FRAME_SMOOTHING = 0.1;
-const WORLD_SCROLL_SPEED = 180;
 const WORLD_RENDER_BUFFER = 180;
 const HORIZON_LINE_COLOR = 'rgba(120, 195, 169, 0.08)';
+const PLAYER_LANE_INDEX = 1;
 
 export class Game implements Updatable, Renderable {
   private readonly container: HTMLElement;
@@ -18,10 +19,10 @@ export class Game implements Updatable, Renderable {
   private readonly resizeObserver: () => void;
   private readonly road: Road;
   private readonly camera: Camera;
+  private readonly playerCar: Car;
   private backgroundGradient: CanvasGradient | null = null;
   private width = 0;
   private height = 0;
-  private pixelRatio = 1;
   private elapsedTimeSeconds = 0;
   private deltaTimeSeconds = 0;
   private framesPerSecond = 0;
@@ -42,6 +43,7 @@ export class Game implements Updatable, Renderable {
     this.loop = new Loop(this, this);
     this.road = new Road();
     this.camera = new Camera();
+    this.playerCar = new Car(this.road.getLaneCenter(PLAYER_LANE_INDEX), 0);
     this.resizeObserver = () => {
       this.resize();
     };
@@ -59,6 +61,7 @@ export class Game implements Updatable, Renderable {
 
   public destroy(): void {
     this.loop.stop();
+    this.playerCar.destroy();
     window.removeEventListener('resize', this.resizeObserver);
     this.canvas.remove();
   }
@@ -66,8 +69,9 @@ export class Game implements Updatable, Renderable {
   public update(deltaTimeSeconds: number): void {
     this.deltaTimeSeconds = deltaTimeSeconds;
     this.elapsedTimeSeconds += deltaTimeSeconds;
-    this.followTargetX = this.road.getLaneCenter(1);
-    this.followTargetY += WORLD_SCROLL_SPEED * deltaTimeSeconds;
+    this.playerCar.update(deltaTimeSeconds);
+    this.followTargetX = this.playerCar.x;
+    this.followTargetY = this.playerCar.y;
     this.camera.follow(this.followTargetX, this.followTargetY);
 
     const instantFramesPerSecond =
@@ -99,8 +103,6 @@ export class Game implements Updatable, Renderable {
 
     this.width = nextWidth;
     this.height = nextHeight;
-    this.pixelRatio = nextPixelRatio;
-
     this.canvas.width = Math.round(nextWidth * nextPixelRatio);
     this.canvas.height = Math.round(nextHeight * nextPixelRatio);
     this.canvas.style.width = `${nextWidth}px`;
@@ -131,12 +133,13 @@ export class Game implements Updatable, Renderable {
     ctx.translate(screenCenterX - this.camera.x, screenAnchorY - this.camera.y);
     this.renderWorldBackdrop(ctx, visibleTop, visibleBottom);
     this.road.render(ctx, visibleTop, visibleBottom);
+    this.playerCar.render(ctx);
     ctx.restore();
   }
 
   private renderDebugOverlay(ctx: CanvasRenderingContext2D): void {
     const panelWidth = 236;
-    const panelHeight = 144;
+    const panelHeight = 176;
     const x = 16;
     const y = 16;
 
@@ -151,7 +154,7 @@ export class Game implements Updatable, Renderable {
     ctx.font = '12px "SF Mono", Monaco, monospace';
     ctx.textBaseline = 'top';
 
-    ctx.fillText('NEURODRIVECAR / MVP 02', x + 12, y + 12);
+    ctx.fillText('NEURODRIVECAR / MVP 03', x + 12, y + 12);
     ctx.fillText(`FPS ${this.framesPerSecond.toFixed(1)}`, x + 12, y + 34);
     ctx.fillText(
       `DT ${(this.deltaTimeSeconds * 1000).toFixed(2)} ms`,
@@ -160,9 +163,11 @@ export class Game implements Updatable, Renderable {
     );
     ctx.fillText(`CAMERA ${this.camera.x.toFixed(1)}, ${this.camera.y.toFixed(1)}`, x + 12, y + 66);
     ctx.fillText(`TARGET ${this.followTargetX.toFixed(1)}, ${this.followTargetY.toFixed(1)}`, x + 12, y + 82);
-    ctx.fillText(`LANE 1 ${this.road.getLaneCenter(0).toFixed(1)}`, x + 12, y + 98);
-    ctx.fillText(`LANE 2 ${this.road.getLaneCenter(1).toFixed(1)}`, x + 12, y + 114);
-    ctx.fillText(`LANE 3 ${this.road.getLaneCenter(2).toFixed(1)}`, x + 12, y + 130);
+    ctx.fillText(`CAR ${this.playerCar.x.toFixed(1)}, ${this.playerCar.y.toFixed(1)}`, x + 12, y + 98);
+    ctx.fillText(`SPEED ${this.playerCar.speed.toFixed(1)}`, x + 12, y + 114);
+    ctx.fillText(`ANGLE ${this.playerCar.angle.toFixed(2)} rad`, x + 12, y + 130);
+    ctx.fillText(`LANE 1 ${this.road.getLaneCenter(0).toFixed(1)}`, x + 12, y + 146);
+    ctx.fillText(`LANE 2 ${this.road.getLaneCenter(1).toFixed(1)}`, x + 12, y + 162);
 
     ctx.restore();
   }

@@ -405,6 +405,7 @@ fully controllable autonomous driving simulation platform
 built entirely with custom systems.
 ```
 
+
 The project should remain:
 
 - Educational
@@ -412,3 +413,252 @@ The project should remain:
 - Visually debuggable
 - Architecture-driven
 - Simulation-focused
+
+---
+
+# Tentative MVP Backlog
+
+The following MVPs are tentative future milestones.
+
+They are intentionally flexible and may evolve as the project grows.
+
+The purpose of this backlog is to:
+
+- Preserve ideas
+- Maintain long-term direction
+- Avoid forgetting promising systems
+- Keep scope visible and organized
+
+These MVPs are NOT committed implementation order.
+
+---
+
+## Stage 1 Expansion
+
+### MVP 11 — Simulation Controls
+
+Focus:
+
+- Pause/resume
+- Simulation speed controls
+- Population size controls
+- Reset/restart tools
+- Training controls
+
+---
+
+### MVP 12 — Visual Polish Pass
+
+Focus:
+
+- Improved road rendering
+- Vehicle styling
+- Better HUD visuals
+- Shadows and contrast
+- Cleaner debug visuals
+
+---
+
+### MVP 13 — Replay System
+
+Focus:
+
+- Record best runs
+- Ghost replay
+- Playback controls
+- Replay export/import
+
+---
+
+## Stage 2 Expansion
+
+### MVP 14 — Curved Roads
+
+Focus:
+
+- Curved lane rendering
+- Curved world coordinates
+- Curved sensor interactions
+- Camera smoothing improvements
+
+---
+
+### MVP 15 — Dynamic Traffic Behaviors
+
+Focus:
+
+- Lane changes
+- Relative speed adaptation
+- Overtaking behavior
+- Traffic density variation
+
+---
+
+### MVP 16 — Road Events
+
+Focus:
+
+- Obstacles
+- Construction zones
+- Closed lanes
+- Random hazards
+
+---
+
+## Stage 3 Expansion
+
+### MVP 17 — Intersections
+
+Focus:
+
+- Multi-directional roads
+- Crossing traffic
+- Basic traffic logic
+- Intersection collision handling
+
+---
+
+### MVP 18 — Traffic Lights
+
+Focus:
+
+- Traffic light systems
+- Light state timing
+- AI stop/go behavior
+- Rule-based navigation
+
+---
+
+### MVP 19 — Pedestrian System
+
+Focus:
+
+- Pedestrian entities
+- Crosswalk logic
+- Pedestrian avoidance
+- Collision penalties
+
+---
+
+### MVP 20 — Urban Navigation
+
+Focus:
+
+- Destination targets
+- Route selection
+- Navigation decisions
+- Goal-oriented AI behavior
+
+---
+
+## Advanced AI Research
+
+### MVP 21 — Improved Evolution Algorithms
+
+Focus:
+
+- Better mutation strategies
+- Population selection improvements
+- Diversity preservation
+- Training stability
+
+---
+
+### MVP 22 — Reinforcement Learning Experiments
+
+Focus:
+
+- Reward systems
+- Policy experimentation
+- Hybrid AI approaches
+- Comparative training methods
+
+---
+
+### MVP 23 — Behavioral Specialization
+
+Focus:
+
+- Aggressive drivers
+- Defensive drivers
+- High-speed behaviors
+- Adaptive driving personalities
+
+---
+
+## Sandbox Features
+
+### MVP 24 — Scenario Editor
+
+Focus:
+
+- Custom road layouts
+- Traffic configuration
+- Spawn editing
+- Training scenario presets
+
+---
+
+### MVP 25 — Analytics Dashboard
+
+Focus:
+
+- Training statistics
+- Evolution metrics
+- Performance graphs
+- Simulation diagnostics
+
+---
+
+### MVP 26 — Procedural World Generation
+
+Focus:
+
+- Infinite procedural roads
+- Dynamic environments
+- Randomized scenarios
+- Simulation replayability
+
+---
+
+### MVP 27 — Weather System
+
+Focus:
+
+- Rain
+- Fog
+- Reduced visibility
+- Surface friction variation
+
+---
+
+### MVP 28 — Day/Night Cycle
+
+Focus:
+
+- Dynamic lighting
+- Headlight systems
+- Visibility challenges
+- Time-based rendering
+
+---
+
+### MVP 29 — Multi-Agent Experiments
+
+Focus:
+
+- Cooperative AI
+- Competitive AI
+- Swarm behaviors
+- Emergent traffic ecosystems
+
+---
+
+### MVP 30 — Experimental Research Playground
+
+Focus:
+
+- Rapid AI experimentation
+- Alternate sensor systems
+- New training models
+- Simulation sandbox tooling
