@@ -8,6 +8,7 @@ const TRAFFIC_SPAWN_MARGIN = 24;
 const TRAFFIC_SPAWN_DISTANCE = 1_400;
 const TRAFFIC_DESPAWN_DISTANCE = 420;
 const TRAFFIC_ROW_SPACING = 260;
+const INITIAL_TRAFFIC_AHEAD_RATIO = 2 / 3;
 const TRAFFIC_CAR_WIDTH = 40;
 const TRAFFIC_CAR_HEIGHT = 72;
 const TRAFFIC_COLLISION_MARGIN = 18;
@@ -58,9 +59,8 @@ export class TrafficManager {
 
   public reset(playerCar: Car): void {
     this.clear();
-    this.nextSpawnY = playerCar.y - this.getInitialSpawnGap(playerCar);
-    this.patternIndex = 0;
-    this.ensureTrafficAhead(playerCar.y);
+    this.patternIndex = getRandomPatternIndex();
+    this.seedInitialTraffic(playerCar);
   }
 
   public destroy(): void {
@@ -160,26 +160,25 @@ export class TrafficManager {
     const spawnLimitY = playerY - TRAFFIC_SPAWN_DISTANCE;
 
     while (this.nextSpawnY >= spawnLimitY) {
-      this.spawnPatternRow();
+      this.spawnPatternRowAt(this.nextSpawnY);
+      this.advancePattern();
       this.nextSpawnY -= TRAFFIC_ROW_SPACING;
-      this.patternIndex =
-        (this.patternIndex + 1) % TRAFFIC_PATTERN.length;
     }
   }
 
-  private spawnPatternRow(): void {
+  private spawnPatternRowAt(spawnY: number): void {
     const lanePattern = TRAFFIC_PATTERN[this.patternIndex];
 
     for (const laneIndex of lanePattern) {
       const spawnX = this.road.getLaneCenter(laneIndex);
 
-      if (!this.canSpawnAt(spawnX, this.nextSpawnY)) {
+      if (!this.canSpawnAt(spawnX, spawnY)) {
         continue;
       }
 
       const car = new Car(
         spawnX,
-        this.nextSpawnY,
+        spawnY,
         TRAFFIC_CAR_WIDTH,
         TRAFFIC_CAR_HEIGHT,
         DEFAULT_CAR_PHYSICS,
@@ -196,6 +195,42 @@ export class TrafficManager {
       });
       this.trafficPolygons.push(car.polygon);
     }
+  }
+
+  private seedInitialTraffic(playerCar: Car): void {
+    const initialGap = this.getInitialSpawnGap(playerCar);
+    const aheadDistance = TRAFFIC_SPAWN_DISTANCE;
+    const behindDistance = TRAFFIC_SPAWN_DISTANCE * (1 - INITIAL_TRAFFIC_AHEAD_RATIO);
+    const firstAheadRowY = playerCar.y - initialGap;
+    const lastAheadRowY = playerCar.y - aheadDistance;
+    const firstBehindRowY = playerCar.y + initialGap + TRAFFIC_ROW_SPACING;
+    const lastBehindRowY = playerCar.y + behindDistance;
+
+    for (
+      let spawnY = firstAheadRowY;
+      spawnY >= lastAheadRowY;
+      spawnY -= TRAFFIC_ROW_SPACING
+    ) {
+      this.spawnPatternRowAt(spawnY);
+      this.advancePattern();
+    }
+
+    for (
+      let spawnY = firstBehindRowY;
+      spawnY <= lastBehindRowY;
+      spawnY += TRAFFIC_ROW_SPACING
+    ) {
+      this.spawnPatternRowAt(spawnY);
+      this.advancePattern();
+    }
+
+    this.nextSpawnY =
+      lastAheadRowY - TRAFFIC_ROW_SPACING;
+  }
+
+  private advancePattern(): void {
+    this.patternIndex =
+      (this.patternIndex + 1) % TRAFFIC_PATTERN.length;
   }
 
   private canSpawnAt(
@@ -274,4 +309,8 @@ export class TrafficManager {
   private getLaneSpeed(laneIndex: number): number {
     return TRAFFIC_SPEED_BY_LANE[laneIndex] ?? TRAFFIC_SPEED_BY_LANE[1];
   }
+}
+
+function getRandomPatternIndex(): number {
+  return Math.floor(Math.random() * TRAFFIC_PATTERN.length);
 }
