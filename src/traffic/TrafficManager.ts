@@ -52,7 +52,7 @@ export class TrafficManager {
 
   public reset(playerX: number, playerY: number): void {
     this.clear();
-    this.nextSpawnY = playerY + TRAFFIC_INITIAL_GAP;
+    this.nextSpawnY = playerY - TRAFFIC_INITIAL_GAP;
     this.patternIndex = 0;
     this.ensureTrafficAhead(playerX, playerY);
   }
@@ -140,11 +140,11 @@ export class TrafficManager {
   }
 
   private ensureTrafficAhead(playerX: number, playerY: number): void {
-    const spawnLimitY = playerY + TRAFFIC_SPAWN_DISTANCE;
+    const spawnLimitY = playerY - TRAFFIC_SPAWN_DISTANCE;
 
-    while (this.nextSpawnY <= spawnLimitY) {
+    while (this.nextSpawnY >= spawnLimitY) {
       this.spawnPatternRow(playerX, playerY);
-      this.nextSpawnY += TRAFFIC_ROW_SPACING;
+      this.nextSpawnY -= TRAFFIC_ROW_SPACING;
       this.patternIndex =
         (this.patternIndex + 1) % TRAFFIC_PATTERN.length;
     }
@@ -213,7 +213,7 @@ export class TrafficManager {
     for (let readIndex = 0; readIndex < this.vehicles.length; readIndex += 1) {
       const vehicle = this.vehicles[readIndex];
 
-      if (vehicle.car.y < playerY - TRAFFIC_DESPAWN_DISTANCE) {
+      if (vehicle.car.y > playerY + TRAFFIC_DESPAWN_DISTANCE) {
         vehicle.car.destroy();
         continue;
       }
