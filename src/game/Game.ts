@@ -2,7 +2,7 @@ import { Camera } from './Camera';
 import { Loop } from './Loop';
 import type { Renderable, Updatable } from './types';
 import { Road } from '../world/Road';
-import { Car } from '../car/Car';
+import { Car, type CarControlMode } from '../car/Car';
 import { TrafficManager } from '../traffic/TrafficManager';
 
 const BACKGROUND_TOP_COLOR = '#081114';
@@ -12,6 +12,7 @@ const WORLD_RENDER_BUFFER = 180;
 const HORIZON_LINE_COLOR = 'rgba(120, 195, 169, 0.08)';
 const PLAYER_LANE_INDEX = 1;
 const RESTART_KEY = 'r';
+const CONTROL_MODE_TOGGLE_KEY = 'm';
 const SENSOR_DECIMALS = 2;
 
 export class Game implements Updatable, Renderable {
@@ -26,7 +27,7 @@ export class Game implements Updatable, Renderable {
   private readonly trafficManager: TrafficManager;
   private readonly playerSpawnX: number;
   private readonly playerSpawnY: number;
-  private readonly restartListener: (event: KeyboardEvent) => void;
+  private readonly keyCommandListener: (event: KeyboardEvent) => void;
   private backgroundGradient: CanvasGradient | null = null;
   private width = 0;
   private height = 0;
@@ -54,13 +55,15 @@ export class Game implements Updatable, Renderable {
     this.camera = new Camera();
     this.playerSpawnX = this.road.getLaneCenter(PLAYER_LANE_INDEX);
     this.playerSpawnY = 0;
-    this.playerCar = new Car(this.playerSpawnX, this.playerSpawnY);
+    this.playerCar = new Car(this.playerSpawnX, this.playerSpawnY, 42, 74, undefined, {
+      controlMode: 'ai',
+    });
     this.trafficManager = new TrafficManager(this.road);
     this.resizeObserver = () => {
       this.resize();
     };
-    this.restartListener = (event: KeyboardEvent) => {
-      this.handleRestartKeyDown(event);
+    this.keyCommandListener = (event: KeyboardEvent) => {
+      this.handleKeyCommand(event);
     };
 
     this.container.append(this.canvas);
@@ -69,7 +72,7 @@ export class Game implements Updatable, Renderable {
     this.resize();
     this.restartSimulation();
     window.addEventListener('resize', this.resizeObserver);
-    window.addEventListener('keydown', this.restartListener);
+    window.addEventListener('keydown', this.keyCommandListener);
   }
 
   public start(): void {
@@ -81,7 +84,7 @@ export class Game implements Updatable, Renderable {
     this.playerCar.destroy();
     this.trafficManager.destroy();
     window.removeEventListener('resize', this.resizeObserver);
-    window.removeEventListener('keydown', this.restartListener);
+    window.removeEventListener('keydown', this.keyCommandListener);
     this.canvas.remove();
   }
 
@@ -179,7 +182,7 @@ export class Game implements Updatable, Renderable {
 
   private renderDebugOverlay(ctx: CanvasRenderingContext2D): void {
     const panelWidth = 252;
-    const panelHeight = 256;
+    const panelHeight = 300;
     const x = 16;
     const y = 16;
     const trafficTargetSpeed = this.trafficManager.getTargetSpeed();
@@ -187,6 +190,8 @@ export class Game implements Updatable, Renderable {
     const statusLabel = this.playerCar.damaged ? 'DAMAGED' : 'ACTIVE';
     const statusColor = this.playerCar.damaged ? '#ff8a75' : '#cde7d5';
     const deltaColor = closingDelta >= 0 ? '#9cf0bd' : '#f0c67a';
+    const controlMode = this.playerCar.getControlMode();
+    const controlModeColor = controlMode === 'ai' ? '#8fe1ff' : '#d7e5de';
 
     ctx.save();
     ctx.fillStyle = 'rgba(4, 12, 15, 0.84)';
@@ -199,32 +204,44 @@ export class Game implements Updatable, Renderable {
     ctx.font = '12px "SF Mono", Monaco, monospace';
     ctx.textBaseline = 'top';
 
-    ctx.fillText('NEURODRIVECAR / MVP 06', x + 12, y + 12);
+    ctx.fillText('NEURODRIVECAR / MVP 07', x + 12, y + 12);
     ctx.fillText(`FPS ${this.framesPerSecond.toFixed(1)}`, x + 12, y + 36);
 
     ctx.fillStyle = statusColor;
     ctx.fillText(`STATE ${statusLabel}`, x + 12, y + 58);
 
+    ctx.fillStyle = controlModeColor;
+    ctx.fillText(
+      `MODE ${controlMode.toUpperCase()}  [${CONTROL_MODE_TOGGLE_KEY.toUpperCase()}]`,
+      x + 12,
+      y + 80
+    );
+
     ctx.fillStyle = '#d7e5de';
     ctx.fillText(
       `SPEED ${Math.abs(this.playerCar.speed).toFixed(1)} ${this.getVelocityDirectionLabel()}`,
       x + 12,
-      y + 80
+      y + 102
     );
-    ctx.fillText(`DIST ${this.traveledDistance.toFixed(1)}`, x + 12, y + 102);
-    ctx.fillText(`TRAFFIC ${this.trafficManager.getActiveCount()}`, x + 12, y + 124);
-    ctx.fillText(`T SPEED ${trafficTargetSpeed.toFixed(1)}`, x + 12, y + 146);
+    ctx.fillText(`DIST ${this.traveledDistance.toFixed(1)}`, x + 12, y + 124);
+    ctx.fillText(`TRAFFIC ${this.trafficManager.getActiveCount()}`, x + 12, y + 146);
+    ctx.fillText(`T SPEED ${trafficTargetSpeed.toFixed(1)}`, x + 12, y + 168);
 
     ctx.fillStyle = deltaColor;
-    ctx.fillText(`DELTA ${closingDelta.toFixed(1)}`, x + 12, y + 168);
+    ctx.fillText(`DELTA ${closingDelta.toFixed(1)}`, x + 12, y + 190);
 
     ctx.fillStyle = '#9db7aa';
-    ctx.fillText(`L SPD ${this.trafficManager.getLaneSpeedDebugLabel()}`, x + 12, y + 190);
-    ctx.fillText(`S HIT ${this.playerCar.getSensorHitCount()}`, x + 12, y + 212);
+    ctx.fillText(`L SPD ${this.trafficManager.getLaneSpeedDebugLabel()}`, x + 12, y + 212);
+    ctx.fillText(`S HIT ${this.playerCar.getSensorHitCount()}`, x + 12, y + 234);
     ctx.fillText(
       `SENSE ${this.formatSensorReadings(this.playerCar.getSensorReadings())}`,
       x + 12,
-      y + 234
+      y + 256
+    );
+    ctx.fillText(
+      `OUT ${this.playerCar.getBrainOutputDebugLabel()}`,
+      x + 12,
+      y + 278
     );
 
     ctx.restore();
@@ -238,13 +255,19 @@ export class Game implements Updatable, Renderable {
     return this.playerCar.speed > 0 ? 'FORWARD' : 'REVERSE';
   }
 
-  private handleRestartKeyDown(event: KeyboardEvent): void {
-    if (event.key.toLowerCase() !== RESTART_KEY) {
+  private handleKeyCommand(event: KeyboardEvent): void {
+    const key = event.key.toLowerCase();
+
+    if (key === RESTART_KEY) {
+      event.preventDefault();
+      this.restartSimulation();
       return;
     }
 
-    event.preventDefault();
-    this.restartSimulation();
+    if (key === CONTROL_MODE_TOGGLE_KEY) {
+      event.preventDefault();
+      this.togglePlayerControlMode();
+    }
   }
 
   private restartSimulation(): void {
@@ -272,6 +295,17 @@ export class Game implements Updatable, Renderable {
     return readings
       .map((reading) => reading.toFixed(SENSOR_DECIMALS))
       .join(' ');
+  }
+
+  private togglePlayerControlMode(): void {
+    const nextMode: CarControlMode =
+      this.playerCar.getControlMode() === 'ai' ? 'player' : 'ai';
+
+    this.playerCar.setControlMode(nextMode);
+    this.playerCar.updateSensors(
+      this.road.borderSegments,
+      this.trafficManager.getTrafficPolygons()
+    );
   }
 
   private renderWorldBackdrop(

@@ -5,6 +5,7 @@ import {
   type Point,
   type Segment,
 } from '../collision/geometry';
+import { Brain, BRAIN_OUTPUT_LABELS } from '../ai/Brain';
 import { Sensor, type SensorConfig } from '../sensors/Sensor';
 import { Controls } from './Controls';
 import {
@@ -25,6 +26,12 @@ const FRONT_MARKER_COLOR = '#f4fff9';
 const FRONT_LIGHT_COLOR = '#f8ffcc';
 const REAR_LIGHT_COLOR = '#ff6b6b';
 const REAR_BUMPER_COLOR = '#5c1f28';
+const AI_CAR_BODY_COLOR = '#6dc8ff';
+const AI_CAR_CABIN_COLOR = '#112636';
+const AI_CAR_OUTLINE_COLOR = '#def5ff';
+const AI_FRONT_MARKER_COLOR = '#eefbff';
+const AI_FRONT_LIGHT_COLOR = '#d3f6ff';
+const AI_REAR_BUMPER_COLOR = '#1c3e57';
 const DEBUG_VECTOR_SPEED_SCALE = 0.28;
 const DEBUG_FORWARD_VECTOR_LENGTH = 34;
 const ENABLE_DEBUG_VECTORS = true;
@@ -32,7 +39,7 @@ const ENABLE_COLLISION_DEBUG = true;
 const COLLISION_POINT_RADIUS = 4;
 const SENSOR_FORWARD_OFFSET_RATIO = 0.18;
 
-export type CarControlMode = 'player' | 'traffic';
+export type CarControlMode = 'player' | 'ai' | 'traffic';
 
 export interface CarAppearance {
   bodyColor: string;
@@ -81,12 +88,14 @@ export class Car {
   public readonly polygon: Point[];
   public collisionPoint: Point | null = null;
   public readonly sensor: Sensor | null;
+  public readonly brain: Brain | null;
 
   private readonly controls: Controls;
   private readonly physics: CarPhysicsConfig;
-  private readonly controlMode: CarControlMode;
+  private controlMode: CarControlMode;
   private readonly trafficSpeed: number;
-  private readonly appearance: CarAppearance;
+  private readonly baseAppearance: CarAppearance;
+  private appearance: CarAppearance;
 
   public constructor(
     x: number,
@@ -103,15 +112,20 @@ export class Car {
     this.physics = physics;
     this.controlMode = options.controlMode ?? 'player';
     this.trafficSpeed = options.trafficSpeed ?? 0;
-    this.appearance = {
+    this.baseAppearance = {
       ...DEFAULT_CAR_APPEARANCE,
       ...options.appearance,
     };
+    this.appearance = this.getAppearanceForMode(this.controlMode);
     this.controls = new Controls();
     this.polygon = createCarPolygon();
     this.sensor =
-      this.controlMode === 'player' && options.sensor !== false
+      this.controlMode !== 'traffic' && options.sensor !== false
         ? new Sensor(options.sensor)
+        : null;
+    this.brain =
+      this.controlMode === 'ai' && this.sensor !== null
+        ? new Brain(this.sensor.normalizedReadings.length)
         : null;
 
     if (this.controlMode === 'player') {
@@ -137,6 +151,7 @@ export class Car {
     this.controls.clear();
     this.updatePolygon();
     this.updateSensors([], []);
+    this.syncBrainToSensors();
   }
 
   public update(deltaTimeSeconds: number, roadBorders: readonly Segment[] = []): void {
@@ -300,10 +315,46 @@ export class Car {
       roadBorders,
       trafficPolygons
     );
+    this.syncBrainToSensors();
   }
 
   public getSensorReadings(): readonly number[] {
     return this.sensor?.normalizedReadings ?? [];
+  }
+
+  public getBrainOutputDebugLabel(): string {
+    if (this.brain === null) {
+      return 'NONE';
+    }
+
+    return this.brain.lastOutputs
+      .map((value, index) => `${BRAIN_OUTPUT_LABELS[index][0].toUpperCase()}:${value}`)
+      .join(' ');
+  }
+
+  public getControlMode(): CarControlMode {
+    return this.controlMode;
+  }
+
+  public setControlMode(controlMode: CarControlMode): void {
+    if (this.controlMode === controlMode || controlMode === 'traffic') {
+      return;
+    }
+
+    if (this.controlMode === 'player') {
+      this.controls.detach();
+    }
+
+    this.controlMode = controlMode;
+    this.controls.clear();
+
+    if (controlMode === 'player') {
+      this.controls.attach();
+    } else {
+      this.syncBrainToSensors();
+    }
+
+    this.refreshAppearance();
   }
 
   public getSensorHitCount(): number {
@@ -464,6 +515,35 @@ export class Car {
     }
 
     ctx.restore();
+  }
+
+  private syncBrainToSensors(): void {
+    if (this.controlMode !== 'ai' || this.brain === null || this.sensor === null) {
+      return;
+    }
+
+    this.controls.applyState(this.brain.decide(this.sensor.normalizedReadings));
+  }
+
+  private refreshAppearance(): void {
+    this.appearance = this.getAppearanceForMode(this.controlMode);
+  }
+
+  private getAppearanceForMode(controlMode: CarControlMode): CarAppearance {
+    if (controlMode !== 'ai') {
+      return { ...this.baseAppearance };
+    }
+
+    return {
+      ...this.baseAppearance,
+      bodyColor: AI_CAR_BODY_COLOR,
+      cabinColor: AI_CAR_CABIN_COLOR,
+      outlineColor: AI_CAR_OUTLINE_COLOR,
+      frontMarkerColor: AI_FRONT_MARKER_COLOR,
+      frontLightColor: AI_FRONT_LIGHT_COLOR,
+      rearBumperColor: AI_REAR_BUMPER_COLOR,
+      debugPolygonColor: 'rgba(109, 200, 255, 0.82)',
+    };
   }
 }
 

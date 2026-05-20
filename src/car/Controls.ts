@@ -3,6 +3,13 @@ const REVERSE_KEYS = new Set(['ArrowDown', 's', 'S']);
 const LEFT_KEYS = new Set(['ArrowLeft', 'a', 'A']);
 const RIGHT_KEYS = new Set(['ArrowRight', 'd', 'D']);
 
+export interface ControlState {
+  forward: boolean;
+  reverse: boolean;
+  left: boolean;
+  right: boolean;
+}
+
 export class Controls {
   public forward = false;
   public reverse = false;
@@ -39,6 +46,22 @@ export class Controls {
 
   public clear(): void {
     this.reset();
+  }
+
+  public applyState(state: ControlState): void {
+    this.forward = state.forward;
+    this.reverse = state.reverse;
+    this.left = state.left;
+    this.right = state.right;
+  }
+
+  public getState(): ControlState {
+    return {
+      forward: this.forward,
+      reverse: this.reverse,
+      left: this.left,
+      right: this.right,
+    };
   }
 
   private reset(): void {
