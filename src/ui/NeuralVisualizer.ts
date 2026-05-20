@@ -67,14 +67,14 @@ export class NeuralVisualizer {
       },
     ];
 
-    const layoutTop = y + 66;
-    const layoutBottom = y + height - 18;
+    const layoutTop = y + 74;
+    const layoutBottom = y + height - 24;
     const layerXs = this.getLayerXs(x + 40, x + width - 42, layers.length);
     const layerNodePositions = layers.map((layer, index) =>
       this.getLayerNodePositions(
         layerXs[index],
-        layoutTop + 18,
-        layoutBottom - 10,
+        layoutTop + 12,
+        layoutBottom - 8,
         layer.activations.length
       )
     );
@@ -104,7 +104,7 @@ export class NeuralVisualizer {
 
       ctx.fillStyle = PANEL_SUBTITLE_COLOR;
       ctx.textAlign = 'center';
-      ctx.fillText(layer.title, layerXs[layerIndex], layoutTop - 18);
+      ctx.fillText(layer.title, layerXs[layerIndex], layoutTop - 22);
 
       for (let nodeIndex = 0; nodeIndex < nodes.length; nodeIndex += 1) {
         this.renderNode(

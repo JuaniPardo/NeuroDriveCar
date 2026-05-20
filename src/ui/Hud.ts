@@ -47,9 +47,9 @@ export class Hud {
     const statusPanelX = margin;
     const statusPanelY = margin;
     const statusPanelWidth = Math.min(232, Math.max(196, data.width * 0.19));
-    const statusPanelHeight = 332;
-    const neuralPanelWidth = Math.min(520, Math.max(360, data.width * 0.3));
-    const neuralPanelHeight = Math.min(272, Math.max(232, data.height * 0.24));
+    const statusPanelHeight = 324;
+    const neuralPanelWidth = Math.min(420, Math.max(320, data.width * 0.22));
+    const neuralPanelHeight = Math.min(360, Math.max(300, data.height * 0.34));
     const neuralPanelX = data.width - neuralPanelWidth - margin;
     const neuralPanelY = margin;
 
@@ -95,7 +95,7 @@ export class Hud {
     const line8Y = line7Y + STATUS_LINE_HEIGHT + STATUS_SECTION_GAP;
     const line9Y = line8Y + STATUS_LINE_HEIGHT;
     const line10Y = line9Y + STATUS_LINE_HEIGHT;
-    const sensorStripY = line10Y + STATUS_LINE_HEIGHT + 8;
+    const sensorStripY = line10Y + STATUS_LINE_HEIGHT + 6;
 
     ctx.save();
     ctx.fillStyle = PANEL_BACKGROUND_COLOR;
@@ -170,9 +170,13 @@ export class Hud {
 
       ctx.fillStyle = PANEL_TEXT_COLOR;
       ctx.textAlign = 'center';
-      ctx.textBaseline = 'bottom';
-      ctx.font = '10px "SF Mono", Monaco, monospace';
-      ctx.fillText(reading.toFixed(SENSOR_DECIMALS), slotX + slotWidth * 0.5, slotY - 2);
+      ctx.textBaseline = 'top';
+      ctx.font = '9px "SF Mono", Monaco, monospace';
+      ctx.fillText(
+        reading.toFixed(SENSOR_DECIMALS),
+        slotX + slotWidth * 0.5,
+        slotY + slotHeight + 4
+      );
     }
 
     ctx.textAlign = 'left';
