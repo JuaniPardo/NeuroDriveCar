@@ -1,11 +1,14 @@
+import { Camera } from './Camera';
 import { Loop } from './Loop';
 import type { Renderable, Updatable } from './types';
+import { Road } from '../world/Road';
 
 const BACKGROUND_TOP_COLOR = '#081114';
 const BACKGROUND_BOTTOM_COLOR = '#020507';
-const GRID_LINE_COLOR = 'rgba(99, 172, 150, 0.08)';
-const GRID_ACCENT_COLOR = 'rgba(127, 224, 196, 0.06)';
 const FRAME_SMOOTHING = 0.1;
+const WORLD_SCROLL_SPEED = 180;
+const WORLD_RENDER_BUFFER = 180;
+const HORIZON_LINE_COLOR = 'rgba(120, 195, 169, 0.08)';
 
 export class Game implements Updatable, Renderable {
   private readonly container: HTMLElement;
@@ -13,6 +16,8 @@ export class Game implements Updatable, Renderable {
   private readonly context: CanvasRenderingContext2D;
   private readonly loop: Loop;
   private readonly resizeObserver: () => void;
+  private readonly road: Road;
+  private readonly camera: Camera;
   private backgroundGradient: CanvasGradient | null = null;
   private width = 0;
   private height = 0;
@@ -20,6 +25,8 @@ export class Game implements Updatable, Renderable {
   private elapsedTimeSeconds = 0;
   private deltaTimeSeconds = 0;
   private framesPerSecond = 0;
+  private followTargetX = 0;
+  private followTargetY = 0;
 
   public constructor(container: HTMLElement) {
     this.container = container;
@@ -33,6 +40,8 @@ export class Game implements Updatable, Renderable {
 
     this.context = context;
     this.loop = new Loop(this, this);
+    this.road = new Road();
+    this.camera = new Camera();
     this.resizeObserver = () => {
       this.resize();
     };
@@ -57,6 +66,9 @@ export class Game implements Updatable, Renderable {
   public update(deltaTimeSeconds: number): void {
     this.deltaTimeSeconds = deltaTimeSeconds;
     this.elapsedTimeSeconds += deltaTimeSeconds;
+    this.followTargetX = this.road.getLaneCenter(1);
+    this.followTargetY += WORLD_SCROLL_SPEED * deltaTimeSeconds;
+    this.camera.follow(this.followTargetX, this.followTargetY);
 
     const instantFramesPerSecond =
       deltaTimeSeconds > 0 ? 1 / deltaTimeSeconds : 0;
@@ -75,7 +87,7 @@ export class Game implements Updatable, Renderable {
 
     ctx.clearRect(0, 0, this.width, this.height);
     this.renderBackground(ctx);
-    this.renderGrid(ctx);
+    this.renderWorld(ctx);
     this.renderDebugOverlay(ctx);
   }
 
@@ -107,36 +119,24 @@ export class Game implements Updatable, Renderable {
     ctx.fillRect(0, 0, this.width, this.height);
   }
 
-  private renderGrid(ctx: CanvasRenderingContext2D): void {
-    const spacing = 48;
-    const offsetY = (this.elapsedTimeSeconds * 18) % spacing;
+  private renderWorld(ctx: CanvasRenderingContext2D): void {
+    const screenCenterX = this.width * 0.5;
+    const screenAnchorY = this.height * 0.78;
+    const visibleTop =
+      this.camera.y - screenAnchorY - WORLD_RENDER_BUFFER;
+    const visibleBottom =
+      this.camera.y + (this.height - screenAnchorY) + WORLD_RENDER_BUFFER;
 
     ctx.save();
-    ctx.lineWidth = 1;
-
-    for (let x = 0; x <= this.width; x += spacing) {
-      ctx.strokeStyle = x % (spacing * 4) === 0 ? GRID_ACCENT_COLOR : GRID_LINE_COLOR;
-      ctx.beginPath();
-      ctx.moveTo(x + 0.5, 0);
-      ctx.lineTo(x + 0.5, this.height);
-      ctx.stroke();
-    }
-
-    for (let y = -spacing; y <= this.height + spacing; y += spacing) {
-      const lineY = y + offsetY;
-      ctx.strokeStyle = y % (spacing * 4) === 0 ? GRID_ACCENT_COLOR : GRID_LINE_COLOR;
-      ctx.beginPath();
-      ctx.moveTo(0, lineY + 0.5);
-      ctx.lineTo(this.width, lineY + 0.5);
-      ctx.stroke();
-    }
-
+    ctx.translate(screenCenterX - this.camera.x, screenAnchorY - this.camera.y);
+    this.renderWorldBackdrop(ctx, visibleTop, visibleBottom);
+    this.road.render(ctx, visibleTop, visibleBottom);
     ctx.restore();
   }
 
   private renderDebugOverlay(ctx: CanvasRenderingContext2D): void {
-    const panelWidth = 210;
-    const panelHeight = 96;
+    const panelWidth = 236;
+    const panelHeight = 144;
     const x = 16;
     const y = 16;
 
@@ -151,15 +151,41 @@ export class Game implements Updatable, Renderable {
     ctx.font = '12px "SF Mono", Monaco, monospace';
     ctx.textBaseline = 'top';
 
-    ctx.fillText('NEURODRIVECAR / MVP 01', x + 12, y + 12);
+    ctx.fillText('NEURODRIVECAR / MVP 02', x + 12, y + 12);
     ctx.fillText(`FPS ${this.framesPerSecond.toFixed(1)}`, x + 12, y + 34);
     ctx.fillText(
       `DT ${(this.deltaTimeSeconds * 1000).toFixed(2)} ms`,
       x + 12,
       y + 50
     );
-    ctx.fillText(`SIZE ${this.width} x ${this.height}`, x + 12, y + 66);
-    ctx.fillText(`DPR ${this.pixelRatio.toFixed(2)}`, x + 12, y + 82);
+    ctx.fillText(`CAMERA ${this.camera.x.toFixed(1)}, ${this.camera.y.toFixed(1)}`, x + 12, y + 66);
+    ctx.fillText(`TARGET ${this.followTargetX.toFixed(1)}, ${this.followTargetY.toFixed(1)}`, x + 12, y + 82);
+    ctx.fillText(`LANE 1 ${this.road.getLaneCenter(0).toFixed(1)}`, x + 12, y + 98);
+    ctx.fillText(`LANE 2 ${this.road.getLaneCenter(1).toFixed(1)}`, x + 12, y + 114);
+    ctx.fillText(`LANE 3 ${this.road.getLaneCenter(2).toFixed(1)}`, x + 12, y + 130);
+
+    ctx.restore();
+  }
+
+  private renderWorldBackdrop(
+    ctx: CanvasRenderingContext2D,
+    visibleTop: number,
+    visibleBottom: number
+  ): void {
+    const bandSpacing = 160;
+    const backdropWidth = this.width * 1.6;
+    const startY = Math.floor(visibleTop / bandSpacing) * bandSpacing;
+
+    ctx.save();
+    ctx.strokeStyle = HORIZON_LINE_COLOR;
+    ctx.lineWidth = 1;
+
+    for (let y = startY; y <= visibleBottom; y += bandSpacing) {
+      ctx.beginPath();
+      ctx.moveTo(-backdropWidth, y + 0.5);
+      ctx.lineTo(backdropWidth, y + 0.5);
+      ctx.stroke();
+    }
 
     ctx.restore();
   }
