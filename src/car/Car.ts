@@ -334,7 +334,7 @@ export class Car {
     const cos = Math.cos(this.angle);
 
     this.x -= sin * distance;
-    this.y += cos * distance;
+    this.y -= cos * distance;
   }
 
   private setDamaged(collision: Point): void {

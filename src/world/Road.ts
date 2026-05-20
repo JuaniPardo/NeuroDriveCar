@@ -7,6 +7,7 @@ const ROAD_SHOULDER_WIDTH = 24;
 const BORDER_WIDTH = 6;
 const DASH_LENGTH = 36;
 const DASH_GAP = 28;
+const DASH_CYCLE_LENGTH = DASH_LENGTH + DASH_GAP;
 const COLLISION_EXTENT_Y = 1_000_000;
 const DEBUG_BORDER_COLOR = 'rgba(127, 224, 196, 0.24)';
 
@@ -79,7 +80,7 @@ export class Road {
     ctx.strokeStyle = '#a6c0b4';
     ctx.lineWidth = 2;
     ctx.setLineDash([DASH_LENGTH, DASH_GAP]);
-    ctx.lineDashOffset = -visibleTop;
+    ctx.lineDashOffset = getStableDashOffset(visibleTop);
 
     for (let laneIndex = 1; laneIndex < this.laneCount; laneIndex += 1) {
       const separatorX = this.left + laneIndex * this.laneWidth;
@@ -130,4 +131,11 @@ function createVerticalBorderSegment(x: number): Segment {
     start: { x, y: -COLLISION_EXTENT_Y },
     end: { x, y: COLLISION_EXTENT_Y },
   };
+}
+
+function getStableDashOffset(visibleTop: number): number {
+  const normalizedVisibleTop =
+    ((visibleTop % DASH_CYCLE_LENGTH) + DASH_CYCLE_LENGTH) % DASH_CYCLE_LENGTH;
+
+  return normalizedVisibleTop;
 }

@@ -8,7 +8,7 @@ const TRAFFIC_SPAWN_MARGIN = 24;
 const TRAFFIC_SPAWN_DISTANCE = 1_400;
 const TRAFFIC_DESPAWN_DISTANCE = 420;
 const TRAFFIC_ROW_SPACING = 260;
-const TRAFFIC_SPEED = -DEFAULT_CAR_PHYSICS.maxForwardSpeed * 0.7;
+const TRAFFIC_SPEED = DEFAULT_CAR_PHYSICS.maxForwardSpeed * 0.7;
 const TRAFFIC_CAR_WIDTH = 40;
 const TRAFFIC_CAR_HEIGHT = 72;
 const TRAFFIC_COLLISION_MARGIN = 18;
@@ -55,7 +55,7 @@ export class TrafficManager {
     this.clear();
     this.nextSpawnY = playerCar.y - this.getInitialSpawnGap(playerCar);
     this.patternIndex = 0;
-    this.ensureTrafficAhead(playerCar.x, playerCar.y);
+    this.ensureTrafficAhead(playerCar.y);
   }
 
   public destroy(): void {
@@ -67,12 +67,11 @@ export class TrafficManager {
     playerCar: Car,
     roadBorders: readonly Segment[]
   ): void {
-    this.ensureTrafficAhead(playerCar.x, playerCar.y);
-
     for (const vehicle of this.vehicles) {
       vehicle.car.update(deltaTimeSeconds, roadBorders);
     }
 
+    this.ensureTrafficAhead(playerCar.y);
     this.removePassedTraffic(playerCar.y);
     this.assessPlayerCollisions(playerCar);
   }
@@ -144,24 +143,24 @@ export class TrafficManager {
     return Math.abs(TRAFFIC_SPEED);
   }
 
-  private ensureTrafficAhead(playerX: number, playerY: number): void {
+  private ensureTrafficAhead(playerY: number): void {
     const spawnLimitY = playerY - TRAFFIC_SPAWN_DISTANCE;
 
     while (this.nextSpawnY >= spawnLimitY) {
-      this.spawnPatternRow(playerX, playerY);
+      this.spawnPatternRow();
       this.nextSpawnY -= TRAFFIC_ROW_SPACING;
       this.patternIndex =
         (this.patternIndex + 1) % TRAFFIC_PATTERN.length;
     }
   }
 
-  private spawnPatternRow(playerX: number, playerY: number): void {
+  private spawnPatternRow(): void {
     const lanePattern = TRAFFIC_PATTERN[this.patternIndex];
 
     for (const laneIndex of lanePattern) {
       const spawnX = this.road.getLaneCenter(laneIndex);
 
-      if (!this.canSpawnAt(spawnX, this.nextSpawnY, playerX, playerY)) {
+      if (!this.canSpawnAt(spawnX, this.nextSpawnY)) {
         continue;
       }
 
@@ -185,17 +184,8 @@ export class TrafficManager {
 
   private canSpawnAt(
     spawnX: number,
-    spawnY: number,
-    playerX: number,
-    playerY: number
+    spawnY: number
   ): boolean {
-    if (
-      Math.abs(playerX - spawnX) < TRAFFIC_CAR_WIDTH &&
-      Math.abs(playerY - spawnY) < TRAFFIC_CAR_HEIGHT + TRAFFIC_COLLISION_MARGIN
-    ) {
-      return false;
-    }
-
     for (const vehicle of this.vehicles) {
       if (vehicle.car.x !== spawnX) {
         continue;

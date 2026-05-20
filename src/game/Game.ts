@@ -34,6 +34,9 @@ export class Game implements Updatable, Renderable {
   private framesPerSecond = 0;
   private followTargetX = 0;
   private followTargetY = 0;
+  private traveledDistance = 0;
+  private lastPlayerX = 0;
+  private lastPlayerY = 0;
 
   public constructor(container: HTMLElement) {
     this.container = container;
@@ -91,6 +94,12 @@ export class Game implements Updatable, Renderable {
       this.playerCar,
       this.road.borderSegments
     );
+    this.traveledDistance += Math.hypot(
+      this.playerCar.x - this.lastPlayerX,
+      this.playerCar.y - this.lastPlayerY
+    );
+    this.lastPlayerX = this.playerCar.x;
+    this.lastPlayerY = this.playerCar.y;
     this.followTargetX = this.playerCar.x;
     this.followTargetY = this.playerCar.y;
     this.camera.follow(
@@ -167,7 +176,7 @@ export class Game implements Updatable, Renderable {
 
   private renderDebugOverlay(ctx: CanvasRenderingContext2D): void {
     const panelWidth = 236;
-    const panelHeight = 304;
+    const panelHeight = 320;
     const x = 16;
     const y = 16;
 
@@ -200,26 +209,27 @@ export class Game implements Updatable, Renderable {
       x + 12,
       y + 162
     );
-    ctx.fillText(`LANE 1 ${this.road.getLaneCenter(0).toFixed(1)}`, x + 12, y + 178);
-    ctx.fillText(`TRAFFIC ${this.trafficManager.getActiveCount()}`, x + 12, y + 194);
+    ctx.fillText(`DIST ${this.traveledDistance.toFixed(1)}`, x + 12, y + 178);
+    ctx.fillText(`LANE 1 ${this.road.getLaneCenter(0).toFixed(1)}`, x + 12, y + 194);
+    ctx.fillText(`TRAFFIC ${this.trafficManager.getActiveCount()}`, x + 12, y + 210);
     ctx.fillText(
       `T SPEED ${this.trafficManager.getTargetSpeed().toFixed(1)}`,
       x + 12,
-      y + 210
+      y + 226
     );
     ctx.fillText(
       `DELTA ${(Math.abs(this.playerCar.speed) - this.trafficManager.getTargetSpeed()).toFixed(1)}`,
       x + 12,
-      y + 226
+      y + 242
     );
-    ctx.fillText(`LANES ${this.trafficManager.getLaneDebugLabel()}`, x + 12, y + 242);
-    ctx.fillText(`STATE ${this.playerCar.damaged ? 'DAMAGED' : 'ACTIVE'}`, x + 12, y + 258);
+    ctx.fillText(`LANES ${this.trafficManager.getLaneDebugLabel()}`, x + 12, y + 258);
+    ctx.fillText(`STATE ${this.playerCar.damaged ? 'DAMAGED' : 'ACTIVE'}`, x + 12, y + 274);
     ctx.fillText(
       `IMPACT ${this.getImpactLabel()}`,
       x + 12,
-      y + 274
+      y + 290
     );
-    ctx.fillText('RESTART R', x + 12, y + 290);
+    ctx.fillText('RESTART R', x + 12, y + 306);
 
     ctx.restore();
   }
@@ -257,6 +267,9 @@ export class Game implements Updatable, Renderable {
     this.camera.reset(this.playerSpawnX, this.playerSpawnY);
     this.followTargetX = this.playerSpawnX;
     this.followTargetY = this.playerSpawnY;
+    this.traveledDistance = 0;
+    this.lastPlayerX = this.playerSpawnX;
+    this.lastPlayerY = this.playerSpawnY;
     this.deltaTimeSeconds = 0;
     this.elapsedTimeSeconds = 0;
     this.framesPerSecond = 0;
