@@ -72,7 +72,11 @@ export class Game implements Updatable, Renderable {
     this.playerCar.update(deltaTimeSeconds);
     this.followTargetX = this.playerCar.x;
     this.followTargetY = this.playerCar.y;
-    this.camera.follow(this.followTargetX, this.followTargetY);
+    this.camera.follow(
+      this.followTargetX,
+      this.followTargetY,
+      deltaTimeSeconds
+    );
 
     const instantFramesPerSecond =
       deltaTimeSeconds > 0 ? 1 / deltaTimeSeconds : 0;
@@ -139,7 +143,7 @@ export class Game implements Updatable, Renderable {
 
   private renderDebugOverlay(ctx: CanvasRenderingContext2D): void {
     const panelWidth = 236;
-    const panelHeight = 176;
+    const panelHeight = 192;
     const x = 16;
     const y = 16;
 
@@ -166,8 +170,9 @@ export class Game implements Updatable, Renderable {
     ctx.fillText(`CAR ${this.playerCar.x.toFixed(1)}, ${this.playerCar.y.toFixed(1)}`, x + 12, y + 98);
     ctx.fillText(`SPEED ${this.playerCar.speed.toFixed(1)}`, x + 12, y + 114);
     ctx.fillText(`ANGLE ${this.playerCar.angle.toFixed(2)} rad`, x + 12, y + 130);
-    ctx.fillText(`LANE 1 ${this.road.getLaneCenter(0).toFixed(1)}`, x + 12, y + 146);
-    ctx.fillText(`LANE 2 ${this.road.getLaneCenter(1).toFixed(1)}`, x + 12, y + 162);
+    ctx.fillText(`STEER ${this.playerCar.steeringAngle.toFixed(2)} rad`, x + 12, y + 146);
+    ctx.fillText(`LANE 1 ${this.road.getLaneCenter(0).toFixed(1)}`, x + 12, y + 162);
+    ctx.fillText(`LANE 2 ${this.road.getLaneCenter(1).toFixed(1)}`, x + 12, y + 178);
 
     ctx.restore();
   }

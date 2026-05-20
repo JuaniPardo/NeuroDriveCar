@@ -1,8 +1,9 @@
 import { Controls } from './Controls';
 import {
   DEFAULT_CAR_PHYSICS,
-  getSteeringAmount,
+  getRotationDelta,
   type CarPhysicsConfig,
+  updateSteeringAngle,
   updateSpeed,
 } from './Physics';
 
@@ -20,6 +21,7 @@ export class Car {
   public readonly height: number;
   public angle = 0;
   public speed = 0;
+  public steeringAngle = 0;
 
   private readonly controls: Controls;
   private readonly physics: CarPhysicsConfig;
@@ -46,20 +48,27 @@ export class Car {
   }
 
   public update(deltaTimeSeconds: number): void {
+    const throttleInput = Number(this.controls.forward) - Number(this.controls.reverse);
+
     this.speed = updateSpeed(
       this.speed,
       deltaTimeSeconds,
-      this.controls.forward,
-      this.controls.reverse,
+      throttleInput,
       this.physics
     );
 
-    const steeringInput = Number(this.controls.right) - Number(this.controls.left);
-
-    this.angle += getSteeringAmount(
-      this.speed,
-      deltaTimeSeconds,
+    const steeringInput = Number(this.controls.left) - Number(this.controls.right);
+    this.steeringAngle = updateSteeringAngle(
+      this.steeringAngle,
       steeringInput,
+      deltaTimeSeconds,
+      this.physics
+    );
+
+    this.angle += getRotationDelta(
+      this.speed,
+      this.steeringAngle,
+      deltaTimeSeconds,
       this.physics
     );
 
