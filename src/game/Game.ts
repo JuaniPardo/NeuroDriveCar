@@ -175,10 +175,15 @@ export class Game implements Updatable, Renderable {
   }
 
   private renderDebugOverlay(ctx: CanvasRenderingContext2D): void {
-    const panelWidth = 236;
-    const panelHeight = 320;
+    const panelWidth = 224;
+    const panelHeight = 212;
     const x = 16;
     const y = 16;
+    const trafficTargetSpeed = this.trafficManager.getTargetSpeed();
+    const closingDelta = Math.abs(this.playerCar.speed) - trafficTargetSpeed;
+    const statusLabel = this.playerCar.damaged ? 'DAMAGED' : 'ACTIVE';
+    const statusColor = this.playerCar.damaged ? '#ff8a75' : '#cde7d5';
+    const deltaColor = closingDelta >= 0 ? '#9cf0bd' : '#f0c67a';
 
     ctx.save();
     ctx.fillStyle = 'rgba(4, 12, 15, 0.84)';
@@ -192,44 +197,26 @@ export class Game implements Updatable, Renderable {
     ctx.textBaseline = 'top';
 
     ctx.fillText('NEURODRIVECAR / MVP 05', x + 12, y + 12);
-    ctx.fillText(`FPS ${this.framesPerSecond.toFixed(1)}`, x + 12, y + 34);
+    ctx.fillText(`FPS ${this.framesPerSecond.toFixed(1)}`, x + 12, y + 36);
+
+    ctx.fillStyle = statusColor;
+    ctx.fillText(`STATE ${statusLabel}`, x + 12, y + 58);
+
+    ctx.fillStyle = '#d7e5de';
     ctx.fillText(
-      `DT ${(this.deltaTimeSeconds * 1000).toFixed(2)} ms`,
+      `SPEED ${Math.abs(this.playerCar.speed).toFixed(1)} ${this.getVelocityDirectionLabel()}`,
       x + 12,
-      y + 50
+      y + 80
     );
-    ctx.fillText(`CAMERA ${this.camera.x.toFixed(1)}, ${this.camera.y.toFixed(1)}`, x + 12, y + 66);
-    ctx.fillText(`TARGET ${this.followTargetX.toFixed(1)}, ${this.followTargetY.toFixed(1)}`, x + 12, y + 82);
-    ctx.fillText(`CAR ${this.playerCar.x.toFixed(1)}, ${this.playerCar.y.toFixed(1)}`, x + 12, y + 98);
-    ctx.fillText(`SPEED ${this.playerCar.speed.toFixed(1)}`, x + 12, y + 114);
-    ctx.fillText(`ANGLE ${this.playerCar.angle.toFixed(2)} rad`, x + 12, y + 130);
-    ctx.fillText(`STEER ${this.playerCar.steeringAngle.toFixed(2)} rad`, x + 12, y + 146);
-    ctx.fillText(
-      `VEL DIR ${this.getVelocityDirectionLabel()}`,
-      x + 12,
-      y + 162
-    );
-    ctx.fillText(`DIST ${this.traveledDistance.toFixed(1)}`, x + 12, y + 178);
-    ctx.fillText(`LANE 1 ${this.road.getLaneCenter(0).toFixed(1)}`, x + 12, y + 194);
-    ctx.fillText(`TRAFFIC ${this.trafficManager.getActiveCount()}`, x + 12, y + 210);
-    ctx.fillText(
-      `T SPEED ${this.trafficManager.getTargetSpeed().toFixed(1)}`,
-      x + 12,
-      y + 226
-    );
-    ctx.fillText(
-      `DELTA ${(Math.abs(this.playerCar.speed) - this.trafficManager.getTargetSpeed()).toFixed(1)}`,
-      x + 12,
-      y + 242
-    );
-    ctx.fillText(`LANES ${this.trafficManager.getLaneDebugLabel()}`, x + 12, y + 258);
-    ctx.fillText(`STATE ${this.playerCar.damaged ? 'DAMAGED' : 'ACTIVE'}`, x + 12, y + 274);
-    ctx.fillText(
-      `IMPACT ${this.getImpactLabel()}`,
-      x + 12,
-      y + 290
-    );
-    ctx.fillText('RESTART R', x + 12, y + 306);
+    ctx.fillText(`DIST ${this.traveledDistance.toFixed(1)}`, x + 12, y + 102);
+    ctx.fillText(`TRAFFIC ${this.trafficManager.getActiveCount()}`, x + 12, y + 124);
+    ctx.fillText(`T SPEED ${trafficTargetSpeed.toFixed(1)}`, x + 12, y + 146);
+
+    ctx.fillStyle = deltaColor;
+    ctx.fillText(`DELTA ${closingDelta.toFixed(1)}`, x + 12, y + 168);
+
+    ctx.fillStyle = '#9db7aa';
+    ctx.fillText(`L SPD ${this.trafficManager.getLaneSpeedDebugLabel()}`, x + 12, y + 190);
 
     ctx.restore();
   }
@@ -240,16 +227,6 @@ export class Game implements Updatable, Renderable {
     }
 
     return this.playerCar.speed > 0 ? 'FORWARD' : 'REVERSE';
-  }
-
-  private getImpactLabel(): string {
-    if (this.playerCar.collisionPoint === null) {
-      return 'NONE';
-    }
-
-    const { x, y } = this.playerCar.collisionPoint;
-
-    return `${x.toFixed(1)}, ${y.toFixed(1)}`;
   }
 
   private handleRestartKeyDown(event: KeyboardEvent): void {

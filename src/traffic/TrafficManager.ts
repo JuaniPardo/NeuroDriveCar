@@ -8,11 +8,15 @@ const TRAFFIC_SPAWN_MARGIN = 24;
 const TRAFFIC_SPAWN_DISTANCE = 1_400;
 const TRAFFIC_DESPAWN_DISTANCE = 420;
 const TRAFFIC_ROW_SPACING = 260;
-const TRAFFIC_SPEED = DEFAULT_CAR_PHYSICS.maxForwardSpeed * 0.7;
 const TRAFFIC_CAR_WIDTH = 40;
 const TRAFFIC_CAR_HEIGHT = 72;
 const TRAFFIC_COLLISION_MARGIN = 18;
 const ENABLE_TRAFFIC_DEBUG = true;
+const TRAFFIC_SPEED_BY_LANE = [
+  DEFAULT_CAR_PHYSICS.maxForwardSpeed * 0.85,
+  DEFAULT_CAR_PHYSICS.maxForwardSpeed * 0.7,
+  DEFAULT_CAR_PHYSICS.maxForwardSpeed * 0.56,
+] as const;
 
 const TRAFFIC_APPEARANCE: Partial<CarAppearance> = {
   bodyColor: '#d19f57',
@@ -140,7 +144,11 @@ export class TrafficManager {
   }
 
   public getTargetSpeed(): number {
-    return Math.abs(TRAFFIC_SPEED);
+    return TRAFFIC_SPEED_BY_LANE[1];
+  }
+
+  public getLaneSpeedDebugLabel(): string {
+    return TRAFFIC_SPEED_BY_LANE.map((speed) => speed.toFixed(0)).join(' ');
   }
 
   private ensureTrafficAhead(playerY: number): void {
@@ -173,7 +181,7 @@ export class TrafficManager {
           DEFAULT_CAR_PHYSICS,
           {
             controlMode: 'traffic',
-            trafficSpeed: TRAFFIC_SPEED,
+            trafficSpeed: this.getLaneSpeed(laneIndex),
             appearance: TRAFFIC_APPEARANCE,
           }
         ),
@@ -250,5 +258,9 @@ export class TrafficManager {
       (playerCar.height + TRAFFIC_CAR_HEIGHT) * 0.5 + TRAFFIC_SPAWN_MARGIN;
 
     return Math.max(MIN_TRAFFIC_INITIAL_GAP, minimumClearGap);
+  }
+
+  private getLaneSpeed(laneIndex: number): number {
+    return TRAFFIC_SPEED_BY_LANE[laneIndex] ?? TRAFFIC_SPEED_BY_LANE[1];
   }
 }
