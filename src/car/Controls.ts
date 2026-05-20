@@ -37,6 +37,10 @@ export class Controls {
     this.reset();
   }
 
+  public clear(): void {
+    this.reset();
+  }
+
   private reset(): void {
     this.forward = false;
     this.reverse = false;

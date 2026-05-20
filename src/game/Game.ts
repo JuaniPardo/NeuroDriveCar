@@ -10,6 +10,7 @@ const FRAME_SMOOTHING = 0.1;
 const WORLD_RENDER_BUFFER = 180;
 const HORIZON_LINE_COLOR = 'rgba(120, 195, 169, 0.08)';
 const PLAYER_LANE_INDEX = 1;
+const RESTART_KEY = 'r';
 
 export class Game implements Updatable, Renderable {
   private readonly container: HTMLElement;
@@ -20,6 +21,9 @@ export class Game implements Updatable, Renderable {
   private readonly road: Road;
   private readonly camera: Camera;
   private readonly playerCar: Car;
+  private readonly playerSpawnX: number;
+  private readonly playerSpawnY: number;
+  private readonly restartListener: (event: KeyboardEvent) => void;
   private backgroundGradient: CanvasGradient | null = null;
   private width = 0;
   private height = 0;
@@ -43,9 +47,14 @@ export class Game implements Updatable, Renderable {
     this.loop = new Loop(this, this);
     this.road = new Road();
     this.camera = new Camera();
-    this.playerCar = new Car(this.road.getLaneCenter(PLAYER_LANE_INDEX), 0);
+    this.playerSpawnX = this.road.getLaneCenter(PLAYER_LANE_INDEX);
+    this.playerSpawnY = 0;
+    this.playerCar = new Car(this.playerSpawnX, this.playerSpawnY);
     this.resizeObserver = () => {
       this.resize();
+    };
+    this.restartListener = (event: KeyboardEvent) => {
+      this.handleRestartKeyDown(event);
     };
 
     this.container.append(this.canvas);
@@ -53,6 +62,7 @@ export class Game implements Updatable, Renderable {
 
     this.resize();
     window.addEventListener('resize', this.resizeObserver);
+    window.addEventListener('keydown', this.restartListener);
   }
 
   public start(): void {
@@ -63,6 +73,7 @@ export class Game implements Updatable, Renderable {
     this.loop.stop();
     this.playerCar.destroy();
     window.removeEventListener('resize', this.resizeObserver);
+    window.removeEventListener('keydown', this.restartListener);
     this.canvas.remove();
   }
 
@@ -144,7 +155,7 @@ export class Game implements Updatable, Renderable {
 
   private renderDebugOverlay(ctx: CanvasRenderingContext2D): void {
     const panelWidth = 236;
-    const panelHeight = 224;
+    const panelHeight = 240;
     const x = 16;
     const y = 16;
 
@@ -184,6 +195,7 @@ export class Game implements Updatable, Renderable {
       x + 12,
       y + 210
     );
+    ctx.fillText('RESTART R', x + 12, y + 226);
 
     ctx.restore();
   }
@@ -204,6 +216,25 @@ export class Game implements Updatable, Renderable {
     const { x, y } = this.playerCar.collisionPoint;
 
     return `${x.toFixed(1)}, ${y.toFixed(1)}`;
+  }
+
+  private handleRestartKeyDown(event: KeyboardEvent): void {
+    if (event.key.toLowerCase() !== RESTART_KEY) {
+      return;
+    }
+
+    event.preventDefault();
+    this.restartSimulation();
+  }
+
+  private restartSimulation(): void {
+    this.playerCar.reset(this.playerSpawnX, this.playerSpawnY);
+    this.camera.reset(this.playerSpawnX, this.playerSpawnY);
+    this.followTargetX = this.playerSpawnX;
+    this.followTargetY = this.playerSpawnY;
+    this.deltaTimeSeconds = 0;
+    this.elapsedTimeSeconds = 0;
+    this.framesPerSecond = 0;
   }
 
   private renderWorldBackdrop(

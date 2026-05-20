@@ -67,6 +67,18 @@ export class Car {
     this.controls.detach();
   }
 
+  public reset(x: number, y: number, angle = 0): void {
+    this.x = x;
+    this.y = y;
+    this.angle = angle;
+    this.speed = 0;
+    this.steeringAngle = 0;
+    this.damaged = false;
+    this.collisionPoint = null;
+    this.controls.clear();
+    this.updatePolygon();
+  }
+
   public update(
     deltaTimeSeconds: number,
     roadBorders: readonly Segment[] = []
