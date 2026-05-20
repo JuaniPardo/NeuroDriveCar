@@ -1,0 +1,34 @@
+:root {
+  color-scheme: dark;
+  font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Code", monospace;
+  background:
+    radial-gradient(circle at top, rgba(42, 72, 66, 0.28), transparent 42%),
+    linear-gradient(180deg, #071013 0%, #030608 100%);
+  color: #d7e5de;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+}
+
+#app {
+  position: relative;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
