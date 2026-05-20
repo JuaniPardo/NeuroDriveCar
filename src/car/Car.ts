@@ -5,6 +5,7 @@ import {
   type Point,
   type Segment,
 } from '../collision/geometry';
+import { Sensor, type SensorConfig } from '../sensors/Sensor';
 import { Controls } from './Controls';
 import {
   DEFAULT_CAR_PHYSICS,
@@ -29,6 +30,7 @@ const DEBUG_FORWARD_VECTOR_LENGTH = 34;
 const ENABLE_DEBUG_VECTORS = true;
 const ENABLE_COLLISION_DEBUG = true;
 const COLLISION_POINT_RADIUS = 4;
+const SENSOR_FORWARD_OFFSET_RATIO = 0.18;
 
 export type CarControlMode = 'player' | 'traffic';
 
@@ -50,6 +52,7 @@ export interface CarOptions {
   controlMode?: CarControlMode;
   trafficSpeed?: number;
   appearance?: Partial<CarAppearance>;
+  sensor?: Partial<SensorConfig> | false;
 }
 
 const DEFAULT_CAR_APPEARANCE: CarAppearance = {
@@ -77,6 +80,7 @@ export class Car {
   public damaged = false;
   public readonly polygon: Point[];
   public collisionPoint: Point | null = null;
+  public readonly sensor: Sensor | null;
 
   private readonly controls: Controls;
   private readonly physics: CarPhysicsConfig;
@@ -105,12 +109,17 @@ export class Car {
     };
     this.controls = new Controls();
     this.polygon = createCarPolygon();
+    this.sensor =
+      this.controlMode === 'player' && options.sensor !== false
+        ? new Sensor(options.sensor)
+        : null;
 
     if (this.controlMode === 'player') {
       this.controls.attach();
     }
 
     this.updatePolygon();
+    this.updateSensors([], []);
   }
 
   public destroy(): void {
@@ -127,12 +136,10 @@ export class Car {
     this.collisionPoint = null;
     this.controls.clear();
     this.updatePolygon();
+    this.updateSensors([], []);
   }
 
-  public update(
-    deltaTimeSeconds: number,
-    roadBorders: readonly Segment[] = []
-  ): void {
+  public update(deltaTimeSeconds: number, roadBorders: readonly Segment[] = []): void {
     if (this.damaged) {
       this.speed = 0;
       this.steeringAngle = 0;
@@ -268,9 +275,39 @@ export class Car {
 
     ctx.restore();
 
+    if (this.sensor !== null) {
+      this.sensor.render(ctx);
+    }
+
     if (ENABLE_COLLISION_DEBUG) {
       this.renderCollisionDebug(ctx);
     }
+  }
+
+  public updateSensors(
+    roadBorders: readonly Segment[],
+    trafficPolygons: readonly (readonly Point[])[]
+  ): void {
+    if (this.sensor === null) {
+      return;
+    }
+
+    const sensorOrigin = this.getSensorOrigin();
+    this.sensor.update(
+      sensorOrigin.x,
+      sensorOrigin.y,
+      this.angle,
+      roadBorders,
+      trafficPolygons
+    );
+  }
+
+  public getSensorReadings(): readonly number[] {
+    return this.sensor?.normalizedReadings ?? [];
+  }
+
+  public getSensorHitCount(): number {
+    return this.sensor?.getHitCount() ?? 0;
   }
 
   public getCollisionWith(otherPolygon: readonly Point[]): Intersection | null {
@@ -342,6 +379,15 @@ export class Car {
     this.speed = 0;
     this.steeringAngle = 0;
     this.collisionPoint = { x: collision.x, y: collision.y };
+  }
+
+  private getSensorOrigin(): Point {
+    const forwardOffset = this.height * SENSOR_FORWARD_OFFSET_RATIO;
+
+    return {
+      x: this.x - Math.sin(this.angle) * forwardOffset,
+      y: this.y - Math.cos(this.angle) * forwardOffset,
+    };
   }
 
   private updatePolygon(): void {

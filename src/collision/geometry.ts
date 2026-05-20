@@ -117,6 +117,63 @@ export function getPolygonSegmentIntersection(
   return null;
 }
 
+export function getNearestSegmentIntersection(
+  segment: Segment,
+  segments: readonly Segment[]
+): Intersection | null {
+  let nearestIntersection: Intersection | null = null;
+
+  for (const candidate of segments) {
+    const intersection = getSegmentIntersection(segment, candidate);
+
+    if (intersection === null) {
+      continue;
+    }
+
+    if (
+      nearestIntersection === null ||
+      intersection.offset < nearestIntersection.offset
+    ) {
+      nearestIntersection = intersection;
+    }
+  }
+
+  return nearestIntersection;
+}
+
+export function getNearestPolygonSegmentIntersection(
+  polygon: readonly Point[],
+  segment: Segment
+): Intersection | null {
+  let nearestIntersection: Intersection | null = null;
+
+  for (let index = 0; index < polygon.length; index += 1) {
+    const polygonEdge = createPolygonEdge(polygon, index);
+    const intersection = getSegmentIntersection(polygonEdge, segment);
+
+    if (intersection === null) {
+      continue;
+    }
+
+    if (
+      nearestIntersection === null ||
+      intersection.offset < nearestIntersection.offset
+    ) {
+      nearestIntersection = intersection;
+    }
+  }
+
+  if (nearestIntersection !== null) {
+    return nearestIntersection;
+  }
+
+  if (isPointInsidePolygon(segment.start, polygon)) {
+    return { x: segment.start.x, y: segment.start.y, offset: 0 };
+  }
+
+  return null;
+}
+
 export function isPointInsidePolygon(
   point: Point,
   polygon: readonly Point[]

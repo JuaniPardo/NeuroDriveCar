@@ -12,6 +12,7 @@ const WORLD_RENDER_BUFFER = 180;
 const HORIZON_LINE_COLOR = 'rgba(120, 195, 169, 0.08)';
 const PLAYER_LANE_INDEX = 1;
 const RESTART_KEY = 'r';
+const SENSOR_DECIMALS = 2;
 
 export class Game implements Updatable, Renderable {
   private readonly container: HTMLElement;
@@ -30,7 +31,6 @@ export class Game implements Updatable, Renderable {
   private width = 0;
   private height = 0;
   private elapsedTimeSeconds = 0;
-  private deltaTimeSeconds = 0;
   private framesPerSecond = 0;
   private followTargetX = 0;
   private followTargetY = 0;
@@ -86,13 +86,16 @@ export class Game implements Updatable, Renderable {
   }
 
   public update(deltaTimeSeconds: number): void {
-    this.deltaTimeSeconds = deltaTimeSeconds;
     this.elapsedTimeSeconds += deltaTimeSeconds;
     this.playerCar.update(deltaTimeSeconds, this.road.borderSegments);
     this.trafficManager.update(
       deltaTimeSeconds,
       this.playerCar,
       this.road.borderSegments
+    );
+    this.playerCar.updateSensors(
+      this.road.borderSegments,
+      this.trafficManager.getTrafficPolygons()
     );
     this.traveledDistance += Math.hypot(
       this.playerCar.x - this.lastPlayerX,
@@ -175,8 +178,8 @@ export class Game implements Updatable, Renderable {
   }
 
   private renderDebugOverlay(ctx: CanvasRenderingContext2D): void {
-    const panelWidth = 224;
-    const panelHeight = 212;
+    const panelWidth = 252;
+    const panelHeight = 256;
     const x = 16;
     const y = 16;
     const trafficTargetSpeed = this.trafficManager.getTargetSpeed();
@@ -196,7 +199,7 @@ export class Game implements Updatable, Renderable {
     ctx.font = '12px "SF Mono", Monaco, monospace';
     ctx.textBaseline = 'top';
 
-    ctx.fillText('NEURODRIVECAR / MVP 05', x + 12, y + 12);
+    ctx.fillText('NEURODRIVECAR / MVP 06', x + 12, y + 12);
     ctx.fillText(`FPS ${this.framesPerSecond.toFixed(1)}`, x + 12, y + 36);
 
     ctx.fillStyle = statusColor;
@@ -217,6 +220,12 @@ export class Game implements Updatable, Renderable {
 
     ctx.fillStyle = '#9db7aa';
     ctx.fillText(`L SPD ${this.trafficManager.getLaneSpeedDebugLabel()}`, x + 12, y + 190);
+    ctx.fillText(`S HIT ${this.playerCar.getSensorHitCount()}`, x + 12, y + 212);
+    ctx.fillText(
+      `SENSE ${this.formatSensorReadings(this.playerCar.getSensorReadings())}`,
+      x + 12,
+      y + 234
+    );
 
     ctx.restore();
   }
@@ -241,15 +250,28 @@ export class Game implements Updatable, Renderable {
   private restartSimulation(): void {
     this.playerCar.reset(this.playerSpawnX, this.playerSpawnY);
     this.trafficManager.reset(this.playerCar);
+    this.playerCar.updateSensors(
+      this.road.borderSegments,
+      this.trafficManager.getTrafficPolygons()
+    );
     this.camera.reset(this.playerSpawnX, this.playerSpawnY);
     this.followTargetX = this.playerSpawnX;
     this.followTargetY = this.playerSpawnY;
     this.traveledDistance = 0;
     this.lastPlayerX = this.playerSpawnX;
     this.lastPlayerY = this.playerSpawnY;
-    this.deltaTimeSeconds = 0;
     this.elapsedTimeSeconds = 0;
     this.framesPerSecond = 0;
+  }
+
+  private formatSensorReadings(readings: readonly number[]): string {
+    if (readings.length === 0) {
+      return 'NONE';
+    }
+
+    return readings
+      .map((reading) => reading.toFixed(SENSOR_DECIMALS))
+      .join(' ');
   }
 
   private renderWorldBackdrop(

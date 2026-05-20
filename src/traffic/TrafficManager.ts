@@ -1,6 +1,6 @@
 import { Car, type CarAppearance } from '../car/Car';
 import { DEFAULT_CAR_PHYSICS } from '../car/Physics';
-import type { Segment } from '../collision/geometry';
+import type { Point, Segment } from '../collision/geometry';
 import { Road } from '../world/Road';
 
 const MIN_TRAFFIC_INITIAL_GAP = 120;
@@ -48,6 +48,7 @@ interface TrafficVehicle {
 export class TrafficManager {
   private readonly road: Road;
   private readonly vehicles: TrafficVehicle[] = [];
+  private readonly trafficPolygons: Point[][] = [];
   private nextSpawnY = 0;
   private patternIndex = 0;
 
@@ -132,6 +133,10 @@ export class TrafficManager {
     return this.vehicles.length;
   }
 
+  public getTrafficPolygons(): readonly (readonly Point[])[] {
+    return this.trafficPolygons;
+  }
+
   public getLaneDebugLabel(): string {
     if (this.vehicles.length === 0) {
       return 'NONE';
@@ -172,21 +177,24 @@ export class TrafficManager {
         continue;
       }
 
+      const car = new Car(
+        spawnX,
+        this.nextSpawnY,
+        TRAFFIC_CAR_WIDTH,
+        TRAFFIC_CAR_HEIGHT,
+        DEFAULT_CAR_PHYSICS,
+        {
+          controlMode: 'traffic',
+          trafficSpeed: this.getLaneSpeed(laneIndex),
+          appearance: TRAFFIC_APPEARANCE,
+        }
+      );
+
       this.vehicles.push({
-        car: new Car(
-          spawnX,
-          this.nextSpawnY,
-          TRAFFIC_CAR_WIDTH,
-          TRAFFIC_CAR_HEIGHT,
-          DEFAULT_CAR_PHYSICS,
-          {
-            controlMode: 'traffic',
-            trafficSpeed: this.getLaneSpeed(laneIndex),
-            appearance: TRAFFIC_APPEARANCE,
-          }
-        ),
+        car,
         laneIndex,
       });
+      this.trafficPolygons.push(car.polygon);
     }
   }
 
@@ -222,10 +230,12 @@ export class TrafficManager {
       }
 
       this.vehicles[writeIndex] = vehicle;
+      this.trafficPolygons[writeIndex] = vehicle.car.polygon;
       writeIndex += 1;
     }
 
     this.vehicles.length = writeIndex;
+    this.trafficPolygons.length = writeIndex;
   }
 
   private assessPlayerCollisions(playerCar: Car): void {
@@ -251,6 +261,7 @@ export class TrafficManager {
     }
 
     this.vehicles.length = 0;
+    this.trafficPolygons.length = 0;
   }
 
   private getInitialSpawnGap(playerCar: Car): number {
