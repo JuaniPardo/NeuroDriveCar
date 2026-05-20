@@ -25,3 +25,15 @@ export function moveTowards(
 
   return current + Math.sign(target - current) * maxDelta;
 }
+
+export function remapClamped(
+  value: number,
+  inputMin: number,
+  inputMax: number,
+  outputMin: number,
+  outputMax: number
+): number {
+  const alpha = clamp(inverseLerp(inputMin, inputMax, value), 0, 1);
+
+  return lerp(outputMin, outputMax, alpha);
+}

@@ -1,5 +1,9 @@
 import type { ControlState } from '../car/Controls';
-import { NeuralNetwork } from './NeuralNetwork';
+import {
+  NeuralNetwork,
+  type NeuralLayerSnapshot,
+  type NeuralNetworkSnapshot,
+} from './NeuralNetwork';
 
 const DEFAULT_HIDDEN_LAYER_SIZE = 6;
 
@@ -15,7 +19,10 @@ export type BrainOutputLabel = (typeof BRAIN_OUTPUT_LABELS)[number];
 export interface BrainSnapshot {
   readonly inputs: readonly number[];
   readonly outputs: readonly number[];
-  readonly layerSizes: readonly number[];
+  readonly visualOutputs: readonly number[];
+  readonly outputLabels: readonly BrainOutputLabel[];
+  readonly network: NeuralNetworkSnapshot;
+  readonly hiddenLayers: readonly NeuralLayerSnapshot[];
 }
 
 export class Brain {
@@ -47,10 +54,16 @@ export class Brain {
   }
 
   public getSnapshot(sensorInputs: readonly number[]): BrainSnapshot {
+    const network = this.network.getSnapshot();
+
     return {
       inputs: sensorInputs,
       outputs: this.lastOutputs,
-      layerSizes: this.network.layerSizes,
+      visualOutputs:
+        network.layers[network.layers.length - 1]?.visualOutputs ?? this.lastOutputs,
+      outputLabels: BRAIN_OUTPUT_LABELS,
+      network,
+      hiddenLayers: network.layers.slice(0, -1),
     };
   }
 }

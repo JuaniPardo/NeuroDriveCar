@@ -4,6 +4,7 @@ import type { Renderable, Updatable } from './types';
 import { Road } from '../world/Road';
 import { Car, type CarControlMode } from '../car/Car';
 import { TrafficManager } from '../traffic/TrafficManager';
+import { Hud } from '../ui/Hud';
 
 const BACKGROUND_TOP_COLOR = '#081114';
 const BACKGROUND_BOTTOM_COLOR = '#020507';
@@ -13,7 +14,6 @@ const HORIZON_LINE_COLOR = 'rgba(120, 195, 169, 0.08)';
 const PLAYER_LANE_INDEX = 1;
 const RESTART_KEY = 'r';
 const CONTROL_MODE_TOGGLE_KEY = 'm';
-const SENSOR_DECIMALS = 2;
 
 export class Game implements Updatable, Renderable {
   private readonly container: HTMLElement;
@@ -25,6 +25,7 @@ export class Game implements Updatable, Renderable {
   private readonly camera: Camera;
   private readonly playerCar: Car;
   private readonly trafficManager: TrafficManager;
+  private readonly hud: Hud;
   private readonly playerSpawnX: number;
   private readonly playerSpawnY: number;
   private readonly keyCommandListener: (event: KeyboardEvent) => void;
@@ -53,6 +54,7 @@ export class Game implements Updatable, Renderable {
     this.loop = new Loop(this, this);
     this.road = new Road();
     this.camera = new Camera();
+    this.hud = new Hud();
     this.playerSpawnX = this.road.getLaneCenter(PLAYER_LANE_INDEX);
     this.playerSpawnY = 0;
     this.playerCar = new Car(this.playerSpawnX, this.playerSpawnY, 42, 74, undefined, {
@@ -132,7 +134,22 @@ export class Game implements Updatable, Renderable {
     ctx.clearRect(0, 0, this.width, this.height);
     this.renderBackground(ctx);
     this.renderWorld(ctx);
-    this.renderDebugOverlay(ctx);
+    this.hud.render(ctx, {
+      width: this.width,
+      height: this.height,
+      framesPerSecond: this.framesPerSecond,
+      controlMode: this.playerCar.getControlMode(),
+      speed: this.playerCar.speed,
+      damaged: this.playerCar.damaged,
+      traveledDistance: this.traveledDistance,
+      trafficCount: this.trafficManager.getActiveCount(),
+      trafficTargetSpeed: this.trafficManager.getTargetSpeed(),
+      laneSpeedLabel: this.trafficManager.getLaneSpeedDebugLabel(),
+      sensorHitCount: this.playerCar.getSensorHitCount(),
+      sensorReadings: this.playerCar.getSensorReadings(),
+      controlState: this.playerCar.getControlState(),
+      brainSnapshot: this.playerCar.getBrainSnapshot(),
+    });
   }
 
   private resize(): void {
@@ -180,81 +197,6 @@ export class Game implements Updatable, Renderable {
     ctx.restore();
   }
 
-  private renderDebugOverlay(ctx: CanvasRenderingContext2D): void {
-    const panelWidth = 252;
-    const panelHeight = 300;
-    const x = 16;
-    const y = 16;
-    const trafficTargetSpeed = this.trafficManager.getTargetSpeed();
-    const closingDelta = Math.abs(this.playerCar.speed) - trafficTargetSpeed;
-    const statusLabel = this.playerCar.damaged ? 'DAMAGED' : 'ACTIVE';
-    const statusColor = this.playerCar.damaged ? '#ff8a75' : '#cde7d5';
-    const deltaColor = closingDelta >= 0 ? '#9cf0bd' : '#f0c67a';
-    const controlMode = this.playerCar.getControlMode();
-    const controlModeColor = controlMode === 'ai' ? '#8fe1ff' : '#d7e5de';
-
-    ctx.save();
-    ctx.fillStyle = 'rgba(4, 12, 15, 0.84)';
-    ctx.strokeStyle = 'rgba(127, 224, 196, 0.28)';
-    ctx.lineWidth = 1;
-    ctx.fillRect(x, y, panelWidth, panelHeight);
-    ctx.strokeRect(x + 0.5, y + 0.5, panelWidth - 1, panelHeight - 1);
-
-    ctx.fillStyle = '#d7e5de';
-    ctx.font = '12px "SF Mono", Monaco, monospace';
-    ctx.textBaseline = 'top';
-
-    ctx.fillText('NEURODRIVECAR / MVP 07', x + 12, y + 12);
-    ctx.fillText(`FPS ${this.framesPerSecond.toFixed(1)}`, x + 12, y + 36);
-
-    ctx.fillStyle = statusColor;
-    ctx.fillText(`STATE ${statusLabel}`, x + 12, y + 58);
-
-    ctx.fillStyle = controlModeColor;
-    ctx.fillText(
-      `MODE ${controlMode.toUpperCase()}  [${CONTROL_MODE_TOGGLE_KEY.toUpperCase()}]`,
-      x + 12,
-      y + 80
-    );
-
-    ctx.fillStyle = '#d7e5de';
-    ctx.fillText(
-      `SPEED ${Math.abs(this.playerCar.speed).toFixed(1)} ${this.getVelocityDirectionLabel()}`,
-      x + 12,
-      y + 102
-    );
-    ctx.fillText(`DIST ${this.traveledDistance.toFixed(1)}`, x + 12, y + 124);
-    ctx.fillText(`TRAFFIC ${this.trafficManager.getActiveCount()}`, x + 12, y + 146);
-    ctx.fillText(`T SPEED ${trafficTargetSpeed.toFixed(1)}`, x + 12, y + 168);
-
-    ctx.fillStyle = deltaColor;
-    ctx.fillText(`DELTA ${closingDelta.toFixed(1)}`, x + 12, y + 190);
-
-    ctx.fillStyle = '#9db7aa';
-    ctx.fillText(`L SPD ${this.trafficManager.getLaneSpeedDebugLabel()}`, x + 12, y + 212);
-    ctx.fillText(`S HIT ${this.playerCar.getSensorHitCount()}`, x + 12, y + 234);
-    ctx.fillText(
-      `SENSE ${this.formatSensorReadings(this.playerCar.getSensorReadings())}`,
-      x + 12,
-      y + 256
-    );
-    ctx.fillText(
-      `OUT ${this.playerCar.getBrainOutputDebugLabel()}`,
-      x + 12,
-      y + 278
-    );
-
-    ctx.restore();
-  }
-
-  private getVelocityDirectionLabel(): string {
-    if (Math.abs(this.playerCar.speed) < 0.001) {
-      return 'STOP';
-    }
-
-    return this.playerCar.speed > 0 ? 'FORWARD' : 'REVERSE';
-  }
-
   private handleKeyCommand(event: KeyboardEvent): void {
     const key = event.key.toLowerCase();
 
@@ -285,16 +227,6 @@ export class Game implements Updatable, Renderable {
     this.lastPlayerY = this.playerSpawnY;
     this.elapsedTimeSeconds = 0;
     this.framesPerSecond = 0;
-  }
-
-  private formatSensorReadings(readings: readonly number[]): string {
-    if (readings.length === 0) {
-      return 'NONE';
-    }
-
-    return readings
-      .map((reading) => reading.toFixed(SENSOR_DECIMALS))
-      .join(' ');
   }
 
   private togglePlayerControlMode(): void {

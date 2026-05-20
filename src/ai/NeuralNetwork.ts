@@ -1,9 +1,24 @@
+export interface NeuralLayerSnapshot {
+  readonly inputCount: number;
+  readonly outputCount: number;
+  readonly weights: readonly (readonly number[])[];
+  readonly biases: readonly number[];
+  readonly outputs: readonly number[];
+  readonly visualOutputs: readonly number[];
+}
+
+export interface NeuralNetworkSnapshot {
+  readonly layerSizes: readonly number[];
+  readonly layers: readonly NeuralLayerSnapshot[];
+}
+
 export class NeuralLayer {
   public readonly inputCount: number;
   public readonly outputCount: number;
   public readonly weights: number[][];
   public readonly biases: number[];
   public readonly outputs: number[];
+  public readonly visualOutputs: number[];
 
   public constructor(inputCount: number, outputCount: number) {
     this.inputCount = inputCount;
@@ -11,6 +26,7 @@ export class NeuralLayer {
     this.weights = [];
     this.biases = [];
     this.outputs = new Array(outputCount).fill(0);
+    this.visualOutputs = new Array(outputCount).fill(0);
 
     for (let outputIndex = 0; outputIndex < outputCount; outputIndex += 1) {
       const row = new Array(inputCount).fill(0);
@@ -32,10 +48,22 @@ export class NeuralLayer {
         sum += inputs[inputIndex] * this.weights[outputIndex][inputIndex];
       }
 
+      this.visualOutputs[outputIndex] = sigmoid(sum);
       this.outputs[outputIndex] = sum > 0 ? 1 : 0;
     }
 
     return this.outputs;
+  }
+
+  public getSnapshot(): NeuralLayerSnapshot {
+    return {
+      inputCount: this.inputCount,
+      outputCount: this.outputCount,
+      weights: this.weights,
+      biases: this.biases,
+      outputs: this.outputs,
+      visualOutputs: this.visualOutputs,
+    };
   }
 }
 
@@ -77,8 +105,19 @@ export class NeuralNetwork {
 
     return this.outputs;
   }
+
+  public getSnapshot(): NeuralNetworkSnapshot {
+    return {
+      layerSizes: this.layerSizes,
+      layers: this.layers.map((layer) => layer.getSnapshot()),
+    };
+  }
 }
 
 function randomWeight(): number {
   return Math.random() * 2 - 1;
+}
+
+function sigmoid(value: number): number {
+  return 1 / (1 + Math.exp(-value));
 }

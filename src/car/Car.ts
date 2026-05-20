@@ -6,6 +6,7 @@ import {
   type Segment,
 } from '../collision/geometry';
 import { Brain, BRAIN_OUTPUT_LABELS } from '../ai/Brain';
+import type { BrainSnapshot } from '../ai/Brain';
 import { Sensor, type SensorConfig } from '../sensors/Sensor';
 import { Controls } from './Controls';
 import {
@@ -322,6 +323,14 @@ export class Car {
     return this.sensor?.normalizedReadings ?? [];
   }
 
+  public getBrainSnapshot(): BrainSnapshot | null {
+    if (this.brain === null || this.sensor === null) {
+      return null;
+    }
+
+    return this.brain.getSnapshot(this.sensor.normalizedReadings);
+  }
+
   public getBrainOutputDebugLabel(): string {
     if (this.brain === null) {
       return 'NONE';
@@ -334,6 +343,10 @@ export class Car {
 
   public getControlMode(): CarControlMode {
     return this.controlMode;
+  }
+
+  public getControlState(): Readonly<ReturnType<Controls['getState']>> {
+    return this.controls.getState();
   }
 
   public setControlMode(controlMode: CarControlMode): void {
