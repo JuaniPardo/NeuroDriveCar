@@ -1,4 +1,5 @@
 import {
+  getPolygonIntersection,
   getPolygonSegmentIntersection,
   type Intersection,
   type Point,
@@ -29,6 +30,42 @@ const ENABLE_DEBUG_VECTORS = true;
 const ENABLE_COLLISION_DEBUG = true;
 const COLLISION_POINT_RADIUS = 4;
 
+export type CarControlMode = 'player' | 'traffic';
+
+export interface CarAppearance {
+  bodyColor: string;
+  damagedBodyColor: string;
+  cabinColor: string;
+  damagedCabinColor: string;
+  outlineColor: string;
+  damagedOutlineColor: string;
+  frontMarkerColor: string;
+  frontLightColor: string;
+  rearLightColor: string;
+  rearBumperColor: string;
+  debugPolygonColor: string;
+}
+
+export interface CarOptions {
+  controlMode?: CarControlMode;
+  trafficSpeed?: number;
+  appearance?: Partial<CarAppearance>;
+}
+
+const DEFAULT_CAR_APPEARANCE: CarAppearance = {
+  bodyColor: CAR_BODY_COLOR,
+  damagedBodyColor: DAMAGED_CAR_BODY_COLOR,
+  cabinColor: CAR_CABIN_COLOR,
+  damagedCabinColor: DAMAGED_CAR_CABIN_COLOR,
+  outlineColor: CAR_OUTLINE_COLOR,
+  damagedOutlineColor: DAMAGED_CAR_OUTLINE_COLOR,
+  frontMarkerColor: FRONT_MARKER_COLOR,
+  frontLightColor: FRONT_LIGHT_COLOR,
+  rearLightColor: REAR_LIGHT_COLOR,
+  rearBumperColor: REAR_BUMPER_COLOR,
+  debugPolygonColor: 'rgba(127, 224, 196, 0.75)',
+};
+
 export class Car {
   public x: number;
   public y: number;
@@ -43,23 +80,36 @@ export class Car {
 
   private readonly controls: Controls;
   private readonly physics: CarPhysicsConfig;
+  private readonly controlMode: CarControlMode;
+  private readonly trafficSpeed: number;
+  private readonly appearance: CarAppearance;
 
   public constructor(
     x: number,
     y: number,
     width = 42,
     height = 74,
-    physics: CarPhysicsConfig = DEFAULT_CAR_PHYSICS
+    physics: CarPhysicsConfig = DEFAULT_CAR_PHYSICS,
+    options: CarOptions = {}
   ) {
     this.x = x;
     this.y = y;
     this.width = width;
     this.height = height;
     this.physics = physics;
+    this.controlMode = options.controlMode ?? 'player';
+    this.trafficSpeed = options.trafficSpeed ?? 0;
+    this.appearance = {
+      ...DEFAULT_CAR_APPEARANCE,
+      ...options.appearance,
+    };
     this.controls = new Controls();
     this.polygon = createCarPolygon();
 
-    this.controls.attach();
+    if (this.controlMode === 'player') {
+      this.controls.attach();
+    }
+
     this.updatePolygon();
   }
 
@@ -71,7 +121,7 @@ export class Car {
     this.x = x;
     this.y = y;
     this.angle = angle;
-    this.speed = 0;
+    this.speed = this.controlMode === 'traffic' ? this.trafficSpeed : 0;
     this.steeringAngle = 0;
     this.damaged = false;
     this.collisionPoint = null;
@@ -87,6 +137,11 @@ export class Car {
       this.speed = 0;
       this.steeringAngle = 0;
       this.updatePolygon();
+      return;
+    }
+
+    if (this.controlMode === 'traffic') {
+      this.updateTraffic(deltaTimeSeconds, roadBorders);
       return;
     }
 
@@ -117,12 +172,7 @@ export class Car {
     );
     this.angle -= rotationDelta;
 
-    const sin = Math.sin(this.angle);
-    const cos = Math.cos(this.angle);
-    const distance = this.speed * deltaTimeSeconds;
-
-    this.x -= sin * distance;
-    this.y += cos * distance;
+    this.advanceAlongHeading(this.speed * deltaTimeSeconds);
 
     this.updatePolygon();
     this.assessDamage(roadBorders);
@@ -133,10 +183,12 @@ export class Car {
     ctx.translate(this.x, this.y);
     ctx.rotate(-this.angle);
 
-    ctx.fillStyle = this.damaged ? DAMAGED_CAR_BODY_COLOR : CAR_BODY_COLOR;
+    ctx.fillStyle = this.damaged
+      ? this.appearance.damagedBodyColor
+      : this.appearance.bodyColor;
     ctx.strokeStyle = this.damaged
-      ? DAMAGED_CAR_OUTLINE_COLOR
-      : CAR_OUTLINE_COLOR;
+      ? this.appearance.damagedOutlineColor
+      : this.appearance.outlineColor;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.roundRect(
@@ -149,7 +201,9 @@ export class Car {
     ctx.fill();
     ctx.stroke();
 
-    ctx.fillStyle = this.damaged ? DAMAGED_CAR_CABIN_COLOR : CAR_CABIN_COLOR;
+    ctx.fillStyle = this.damaged
+      ? this.appearance.damagedCabinColor
+      : this.appearance.cabinColor;
     ctx.fillRect(
       -this.width * 0.28,
       -this.height * 0.18,
@@ -157,7 +211,7 @@ export class Car {
       this.height * 0.38
     );
 
-    ctx.fillStyle = FRONT_MARKER_COLOR;
+    ctx.fillStyle = this.appearance.frontMarkerColor;
     ctx.beginPath();
     ctx.moveTo(0, -this.height * 0.42);
     ctx.lineTo(this.width * 0.14, -this.height * 0.28);
@@ -165,7 +219,7 @@ export class Car {
     ctx.closePath();
     ctx.fill();
 
-    ctx.fillStyle = FRONT_LIGHT_COLOR;
+    ctx.fillStyle = this.appearance.frontLightColor;
     ctx.fillRect(
       -this.width * 0.3,
       -this.height * 0.28,
@@ -179,7 +233,7 @@ export class Car {
       this.height * 0.08
     );
 
-    ctx.fillStyle = REAR_BUMPER_COLOR;
+    ctx.fillStyle = this.appearance.rearBumperColor;
     ctx.fillRect(
       -this.width * 0.28,
       this.height * 0.28,
@@ -187,7 +241,7 @@ export class Car {
       this.height * 0.08
     );
 
-    ctx.fillStyle = REAR_LIGHT_COLOR;
+    ctx.fillStyle = this.appearance.rearLightColor;
     ctx.fillRect(
       -this.width * 0.3,
       this.height * 0.24,
@@ -217,6 +271,14 @@ export class Car {
     if (ENABLE_COLLISION_DEBUG) {
       this.renderCollisionDebug(ctx);
     }
+  }
+
+  public getCollisionWith(otherPolygon: readonly Point[]): Intersection | null {
+    return getPolygonIntersection(this.polygon, otherPolygon);
+  }
+
+  public damage(collisionPoint: Point): void {
+    this.setDamaged(collisionPoint);
   }
 
   private renderDebugVectors(ctx: CanvasRenderingContext2D): void {
@@ -256,7 +318,26 @@ export class Car {
     }
   }
 
-  private setDamaged(collision: Intersection): void {
+  private updateTraffic(
+    deltaTimeSeconds: number,
+    roadBorders: readonly Segment[]
+  ): void {
+    this.speed = this.trafficSpeed;
+    this.steeringAngle = 0;
+    this.advanceAlongHeading(this.speed * deltaTimeSeconds);
+    this.updatePolygon();
+    this.assessDamage(roadBorders);
+  }
+
+  private advanceAlongHeading(distance: number): void {
+    const sin = Math.sin(this.angle);
+    const cos = Math.cos(this.angle);
+
+    this.x -= sin * distance;
+    this.y += cos * distance;
+  }
+
+  private setDamaged(collision: Point): void {
     this.damaged = true;
     this.speed = 0;
     this.steeringAngle = 0;
@@ -312,7 +393,7 @@ export class Car {
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = this.damaged
       ? 'rgba(255, 140, 140, 0.95)'
-      : 'rgba(127, 224, 196, 0.75)';
+      : this.appearance.debugPolygonColor;
     ctx.beginPath();
     ctx.moveTo(this.polygon[0].x, this.polygon[0].y);
 

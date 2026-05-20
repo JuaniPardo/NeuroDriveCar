@@ -3,6 +3,7 @@ import { Loop } from './Loop';
 import type { Renderable, Updatable } from './types';
 import { Road } from '../world/Road';
 import { Car } from '../car/Car';
+import { TrafficManager } from '../traffic/TrafficManager';
 
 const BACKGROUND_TOP_COLOR = '#081114';
 const BACKGROUND_BOTTOM_COLOR = '#020507';
@@ -21,6 +22,7 @@ export class Game implements Updatable, Renderable {
   private readonly road: Road;
   private readonly camera: Camera;
   private readonly playerCar: Car;
+  private readonly trafficManager: TrafficManager;
   private readonly playerSpawnX: number;
   private readonly playerSpawnY: number;
   private readonly restartListener: (event: KeyboardEvent) => void;
@@ -50,6 +52,7 @@ export class Game implements Updatable, Renderable {
     this.playerSpawnX = this.road.getLaneCenter(PLAYER_LANE_INDEX);
     this.playerSpawnY = 0;
     this.playerCar = new Car(this.playerSpawnX, this.playerSpawnY);
+    this.trafficManager = new TrafficManager(this.road);
     this.resizeObserver = () => {
       this.resize();
     };
@@ -61,6 +64,7 @@ export class Game implements Updatable, Renderable {
     this.context.imageSmoothingEnabled = false;
 
     this.resize();
+    this.restartSimulation();
     window.addEventListener('resize', this.resizeObserver);
     window.addEventListener('keydown', this.restartListener);
   }
@@ -72,6 +76,7 @@ export class Game implements Updatable, Renderable {
   public destroy(): void {
     this.loop.stop();
     this.playerCar.destroy();
+    this.trafficManager.destroy();
     window.removeEventListener('resize', this.resizeObserver);
     window.removeEventListener('keydown', this.restartListener);
     this.canvas.remove();
@@ -81,6 +86,11 @@ export class Game implements Updatable, Renderable {
     this.deltaTimeSeconds = deltaTimeSeconds;
     this.elapsedTimeSeconds += deltaTimeSeconds;
     this.playerCar.update(deltaTimeSeconds, this.road.borderSegments);
+    this.trafficManager.update(
+      deltaTimeSeconds,
+      this.playerCar,
+      this.road.borderSegments
+    );
     this.followTargetX = this.playerCar.x;
     this.followTargetY = this.playerCar.y;
     this.camera.follow(
@@ -149,13 +159,15 @@ export class Game implements Updatable, Renderable {
     this.renderWorldBackdrop(ctx, visibleTop, visibleBottom);
     this.road.render(ctx, visibleTop, visibleBottom);
     this.road.renderDebug(ctx, visibleTop, visibleBottom);
+    this.trafficManager.render(ctx);
+    this.trafficManager.renderDebug(ctx, visibleTop, visibleBottom);
     this.playerCar.render(ctx);
     ctx.restore();
   }
 
   private renderDebugOverlay(ctx: CanvasRenderingContext2D): void {
     const panelWidth = 236;
-    const panelHeight = 240;
+    const panelHeight = 272;
     const x = 16;
     const y = 16;
 
@@ -170,7 +182,7 @@ export class Game implements Updatable, Renderable {
     ctx.font = '12px "SF Mono", Monaco, monospace';
     ctx.textBaseline = 'top';
 
-    ctx.fillText('NEURODRIVECAR / MVP 04', x + 12, y + 12);
+    ctx.fillText('NEURODRIVECAR / MVP 05', x + 12, y + 12);
     ctx.fillText(`FPS ${this.framesPerSecond.toFixed(1)}`, x + 12, y + 34);
     ctx.fillText(
       `DT ${(this.deltaTimeSeconds * 1000).toFixed(2)} ms`,
@@ -189,13 +201,15 @@ export class Game implements Updatable, Renderable {
       y + 162
     );
     ctx.fillText(`LANE 1 ${this.road.getLaneCenter(0).toFixed(1)}`, x + 12, y + 178);
-    ctx.fillText(`STATE ${this.playerCar.damaged ? 'DAMAGED' : 'ACTIVE'}`, x + 12, y + 194);
+    ctx.fillText(`TRAFFIC ${this.trafficManager.getActiveCount()}`, x + 12, y + 194);
+    ctx.fillText(`LANES ${this.trafficManager.getLaneDebugLabel()}`, x + 12, y + 210);
+    ctx.fillText(`STATE ${this.playerCar.damaged ? 'DAMAGED' : 'ACTIVE'}`, x + 12, y + 226);
     ctx.fillText(
       `IMPACT ${this.getImpactLabel()}`,
       x + 12,
-      y + 210
+      y + 242
     );
-    ctx.fillText('RESTART R', x + 12, y + 226);
+    ctx.fillText('RESTART R', x + 12, y + 258);
 
     ctx.restore();
   }
@@ -229,6 +243,7 @@ export class Game implements Updatable, Renderable {
 
   private restartSimulation(): void {
     this.playerCar.reset(this.playerSpawnX, this.playerSpawnY);
+    this.trafficManager.reset(this.playerSpawnX, this.playerSpawnY);
     this.camera.reset(this.playerSpawnX, this.playerSpawnY);
     this.followTargetX = this.playerSpawnX;
     this.followTargetY = this.playerSpawnY;
