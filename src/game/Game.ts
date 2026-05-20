@@ -69,7 +69,7 @@ export class Game implements Updatable, Renderable {
   public update(deltaTimeSeconds: number): void {
     this.deltaTimeSeconds = deltaTimeSeconds;
     this.elapsedTimeSeconds += deltaTimeSeconds;
-    this.playerCar.update(deltaTimeSeconds);
+    this.playerCar.update(deltaTimeSeconds, this.road.borderSegments);
     this.followTargetX = this.playerCar.x;
     this.followTargetY = this.playerCar.y;
     this.camera.follow(
@@ -137,13 +137,14 @@ export class Game implements Updatable, Renderable {
     ctx.translate(screenCenterX - this.camera.x, screenAnchorY - this.camera.y);
     this.renderWorldBackdrop(ctx, visibleTop, visibleBottom);
     this.road.render(ctx, visibleTop, visibleBottom);
+    this.road.renderDebug(ctx, visibleTop, visibleBottom);
     this.playerCar.render(ctx);
     ctx.restore();
   }
 
   private renderDebugOverlay(ctx: CanvasRenderingContext2D): void {
     const panelWidth = 236;
-    const panelHeight = 192;
+    const panelHeight = 224;
     const x = 16;
     const y = 16;
 
@@ -158,7 +159,7 @@ export class Game implements Updatable, Renderable {
     ctx.font = '12px "SF Mono", Monaco, monospace';
     ctx.textBaseline = 'top';
 
-    ctx.fillText('NEURODRIVECAR / MVP 03', x + 12, y + 12);
+    ctx.fillText('NEURODRIVECAR / MVP 04', x + 12, y + 12);
     ctx.fillText(`FPS ${this.framesPerSecond.toFixed(1)}`, x + 12, y + 34);
     ctx.fillText(
       `DT ${(this.deltaTimeSeconds * 1000).toFixed(2)} ms`,
@@ -177,6 +178,12 @@ export class Game implements Updatable, Renderable {
       y + 162
     );
     ctx.fillText(`LANE 1 ${this.road.getLaneCenter(0).toFixed(1)}`, x + 12, y + 178);
+    ctx.fillText(`STATE ${this.playerCar.damaged ? 'DAMAGED' : 'ACTIVE'}`, x + 12, y + 194);
+    ctx.fillText(
+      `IMPACT ${this.getImpactLabel()}`,
+      x + 12,
+      y + 210
+    );
 
     ctx.restore();
   }
@@ -188,6 +195,17 @@ export class Game implements Updatable, Renderable {
 
     return this.playerCar.speed > 0 ? 'FORWARD' : 'REVERSE';
   }
+
+  private getImpactLabel(): string {
+    if (this.playerCar.collisionPoint === null) {
+      return 'NONE';
+    }
+
+    const { x, y } = this.playerCar.collisionPoint;
+
+    return `${x.toFixed(1)}, ${y.toFixed(1)}`;
+  }
+
   private renderWorldBackdrop(
     ctx: CanvasRenderingContext2D,
     visibleTop: number,

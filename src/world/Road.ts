@@ -1,3 +1,4 @@
+import type { Segment } from '../collision/geometry';
 import { clampLaneIndex, Lane } from './Lane';
 
 const DEFAULT_LANE_COUNT = 3;
@@ -6,6 +7,8 @@ const ROAD_SHOULDER_WIDTH = 24;
 const BORDER_WIDTH = 6;
 const DASH_LENGTH = 36;
 const DASH_GAP = 28;
+const COLLISION_EXTENT_Y = 1_000_000;
+const DEBUG_BORDER_COLOR = 'rgba(127, 224, 196, 0.24)';
 
 export class Road {
   public readonly x: number;
@@ -15,6 +18,7 @@ export class Road {
   public readonly left: number;
   public readonly right: number;
   public readonly borders: readonly [number, number];
+  public readonly borderSegments: readonly [Segment, Segment];
   private readonly lanes: Lane[];
 
   public constructor(
@@ -29,6 +33,10 @@ export class Road {
     this.left = x - this.width * 0.5;
     this.right = x + this.width * 0.5;
     this.borders = [this.left, this.right] as const;
+    this.borderSegments = [
+      createVerticalBorderSegment(this.left),
+      createVerticalBorderSegment(this.right),
+    ] as const;
     this.lanes = [];
 
     for (let laneIndex = 0; laneIndex < laneCount; laneIndex += 1) {
@@ -95,4 +103,31 @@ export class Road {
 
     ctx.restore();
   }
+
+  public renderDebug(
+    ctx: CanvasRenderingContext2D,
+    visibleTop: number,
+    visibleBottom: number
+  ): void {
+    ctx.save();
+    ctx.strokeStyle = DEBUG_BORDER_COLOR;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([14, 10]);
+
+    for (const border of this.borderSegments) {
+      ctx.beginPath();
+      ctx.moveTo(border.start.x, visibleTop);
+      ctx.lineTo(border.end.x, visibleBottom);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+}
+
+function createVerticalBorderSegment(x: number): Segment {
+  return {
+    start: { x, y: -COLLISION_EXTENT_Y },
+    end: { x, y: COLLISION_EXTENT_Y },
+  };
 }

@@ -10,6 +10,27 @@ Planned
 
 ---
 
+# Roadmap Position
+
+```txt
+[✓] MVP 01 — Previous completed MVP
+[→] MVP XX — Current MVP
+[ ] MVP XX+1 — Next planned MVP
+[ ] MVP XX+2 — Future planned MVP
+```
+
+Legend:
+
+```txt
+[✓] Completed
+[→] Current
+[~] Partial
+[ ] Planned
+[!] Blocked
+```
+
+---
+
 # Goal
 
 Describe the primary objective of this MVP.

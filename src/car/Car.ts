@@ -1,3 +1,9 @@
+import {
+  getPolygonSegmentIntersection,
+  type Intersection,
+  type Point,
+  type Segment,
+} from '../collision/geometry';
 import { Controls } from './Controls';
 import {
   DEFAULT_CAR_PHYSICS,
@@ -8,8 +14,11 @@ import {
 } from './Physics';
 
 const CAR_BODY_COLOR = '#7fe0c4';
+const DAMAGED_CAR_BODY_COLOR = '#7a3a3a';
 const CAR_CABIN_COLOR = '#163039';
+const DAMAGED_CAR_CABIN_COLOR = '#261315';
 const CAR_OUTLINE_COLOR = '#ecfff7';
+const DAMAGED_CAR_OUTLINE_COLOR = '#ffc0c0';
 const FRONT_MARKER_COLOR = '#f4fff9';
 const FRONT_LIGHT_COLOR = '#f8ffcc';
 const REAR_LIGHT_COLOR = '#ff6b6b';
@@ -17,6 +26,8 @@ const REAR_BUMPER_COLOR = '#5c1f28';
 const DEBUG_VECTOR_SPEED_SCALE = 0.28;
 const DEBUG_FORWARD_VECTOR_LENGTH = 34;
 const ENABLE_DEBUG_VECTORS = true;
+const ENABLE_COLLISION_DEBUG = true;
+const COLLISION_POINT_RADIUS = 4;
 
 export class Car {
   public x: number;
@@ -26,6 +37,9 @@ export class Car {
   public angle = 0;
   public speed = 0;
   public steeringAngle = 0;
+  public damaged = false;
+  public readonly polygon: Point[];
+  public collisionPoint: Point | null = null;
 
   private readonly controls: Controls;
   private readonly physics: CarPhysicsConfig;
@@ -43,15 +57,27 @@ export class Car {
     this.height = height;
     this.physics = physics;
     this.controls = new Controls();
+    this.polygon = createCarPolygon();
 
     this.controls.attach();
+    this.updatePolygon();
   }
 
   public destroy(): void {
     this.controls.detach();
   }
 
-  public update(deltaTimeSeconds: number): void {
+  public update(
+    deltaTimeSeconds: number,
+    roadBorders: readonly Segment[] = []
+  ): void {
+    if (this.damaged) {
+      this.speed = 0;
+      this.steeringAngle = 0;
+      this.updatePolygon();
+      return;
+    }
+
     const throttleInput =
       Number(this.controls.forward) - Number(this.controls.reverse);
 
@@ -85,6 +111,9 @@ export class Car {
 
     this.x -= sin * distance;
     this.y += cos * distance;
+
+    this.updatePolygon();
+    this.assessDamage(roadBorders);
   }
 
   public render(ctx: CanvasRenderingContext2D): void {
@@ -92,8 +121,10 @@ export class Car {
     ctx.translate(this.x, this.y);
     ctx.rotate(-this.angle);
 
-    ctx.fillStyle = CAR_BODY_COLOR;
-    ctx.strokeStyle = CAR_OUTLINE_COLOR;
+    ctx.fillStyle = this.damaged ? DAMAGED_CAR_BODY_COLOR : CAR_BODY_COLOR;
+    ctx.strokeStyle = this.damaged
+      ? DAMAGED_CAR_OUTLINE_COLOR
+      : CAR_OUTLINE_COLOR;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.roundRect(
@@ -106,7 +137,7 @@ export class Car {
     ctx.fill();
     ctx.stroke();
 
-    ctx.fillStyle = CAR_CABIN_COLOR;
+    ctx.fillStyle = this.damaged ? DAMAGED_CAR_CABIN_COLOR : CAR_CABIN_COLOR;
     ctx.fillRect(
       -this.width * 0.28,
       -this.height * 0.18,
@@ -170,6 +201,10 @@ export class Car {
     }
 
     ctx.restore();
+
+    if (ENABLE_COLLISION_DEBUG) {
+      this.renderCollisionDebug(ctx);
+    }
   }
 
   private renderDebugVectors(ctx: CanvasRenderingContext2D): void {
@@ -195,4 +230,122 @@ export class Car {
     ctx.arc(0, -velocityLength * speedDirection, 3, 0, Math.PI * 2);
     ctx.fill();
   }
+
+  private assessDamage(roadBorders: readonly Segment[]): void {
+    for (const roadBorder of roadBorders) {
+      const collision = getPolygonSegmentIntersection(this.polygon, roadBorder);
+
+      if (collision === null) {
+        continue;
+      }
+
+      this.setDamaged(collision);
+      return;
+    }
+  }
+
+  private setDamaged(collision: Intersection): void {
+    this.damaged = true;
+    this.speed = 0;
+    this.steeringAngle = 0;
+    this.collisionPoint = { x: collision.x, y: collision.y };
+  }
+
+  private updatePolygon(): void {
+    const halfWidth = this.width * 0.5;
+    const halfHeight = this.height * 0.5;
+    const cos = Math.cos(this.angle);
+    const sin = Math.sin(this.angle);
+
+    updatePolygonPoint(
+      this.polygon[0],
+      this.x,
+      this.y,
+      -halfWidth,
+      -halfHeight,
+      cos,
+      sin
+    );
+    updatePolygonPoint(
+      this.polygon[1],
+      this.x,
+      this.y,
+      halfWidth,
+      -halfHeight,
+      cos,
+      sin
+    );
+    updatePolygonPoint(
+      this.polygon[2],
+      this.x,
+      this.y,
+      halfWidth,
+      halfHeight,
+      cos,
+      sin
+    );
+    updatePolygonPoint(
+      this.polygon[3],
+      this.x,
+      this.y,
+      -halfWidth,
+      halfHeight,
+      cos,
+      sin
+    );
+  }
+
+  private renderCollisionDebug(ctx: CanvasRenderingContext2D): void {
+    ctx.save();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = this.damaged
+      ? 'rgba(255, 140, 140, 0.95)'
+      : 'rgba(127, 224, 196, 0.75)';
+    ctx.beginPath();
+    ctx.moveTo(this.polygon[0].x, this.polygon[0].y);
+
+    for (let index = 1; index < this.polygon.length; index += 1) {
+      ctx.lineTo(this.polygon[index].x, this.polygon[index].y);
+    }
+
+    ctx.closePath();
+    ctx.stroke();
+
+    if (this.collisionPoint !== null) {
+      ctx.fillStyle = 'rgba(255, 120, 120, 0.95)';
+      ctx.beginPath();
+      ctx.arc(
+        this.collisionPoint.x,
+        this.collisionPoint.y,
+        COLLISION_POINT_RADIUS,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+}
+
+function createCarPolygon(): Point[] {
+  return [
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+  ];
+}
+
+function updatePolygonPoint(
+  point: Point,
+  centerX: number,
+  centerY: number,
+  localX: number,
+  localY: number,
+  cos: number,
+  sin: number
+): void {
+  point.x = centerX + localX * cos + localY * sin;
+  point.y = centerY - localX * sin + localY * cos;
 }
