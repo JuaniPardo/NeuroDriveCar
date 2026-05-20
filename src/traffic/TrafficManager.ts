@@ -3,11 +3,12 @@ import { DEFAULT_CAR_PHYSICS } from '../car/Physics';
 import type { Segment } from '../collision/geometry';
 import { Road } from '../world/Road';
 
-const TRAFFIC_INITIAL_GAP = 120;
+const MIN_TRAFFIC_INITIAL_GAP = 120;
+const TRAFFIC_SPAWN_MARGIN = 24;
 const TRAFFIC_SPAWN_DISTANCE = 1_400;
 const TRAFFIC_DESPAWN_DISTANCE = 420;
 const TRAFFIC_ROW_SPACING = 260;
-const TRAFFIC_SPEED = DEFAULT_CAR_PHYSICS.maxForwardSpeed * 0.8;
+const TRAFFIC_SPEED = -DEFAULT_CAR_PHYSICS.maxForwardSpeed * 0.8;
 const TRAFFIC_CAR_WIDTH = 40;
 const TRAFFIC_CAR_HEIGHT = 72;
 const TRAFFIC_COLLISION_MARGIN = 18;
@@ -50,11 +51,11 @@ export class TrafficManager {
     this.road = road;
   }
 
-  public reset(playerX: number, playerY: number): void {
+  public reset(playerCar: Car): void {
     this.clear();
-    this.nextSpawnY = playerY - TRAFFIC_INITIAL_GAP;
+    this.nextSpawnY = playerCar.y - this.getInitialSpawnGap(playerCar);
     this.patternIndex = 0;
-    this.ensureTrafficAhead(playerX, playerY);
+    this.ensureTrafficAhead(playerCar.x, playerCar.y);
   }
 
   public destroy(): void {
@@ -248,5 +249,12 @@ export class TrafficManager {
     }
 
     this.vehicles.length = 0;
+  }
+
+  private getInitialSpawnGap(playerCar: Car): number {
+    const minimumClearGap =
+      (playerCar.height + TRAFFIC_CAR_HEIGHT) * 0.5 + TRAFFIC_SPAWN_MARGIN;
+
+    return Math.max(MIN_TRAFFIC_INITIAL_GAP, minimumClearGap);
   }
 }

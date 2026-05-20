@@ -243,7 +243,7 @@ export class Game implements Updatable, Renderable {
 
   private restartSimulation(): void {
     this.playerCar.reset(this.playerSpawnX, this.playerSpawnY);
-    this.trafficManager.reset(this.playerSpawnX, this.playerSpawnY);
+    this.trafficManager.reset(this.playerCar);
     this.camera.reset(this.playerSpawnX, this.playerSpawnY);
     this.followTargetX = this.playerSpawnX;
     this.followTargetY = this.playerSpawnY;
