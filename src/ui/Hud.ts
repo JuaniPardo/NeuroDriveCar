@@ -14,6 +14,9 @@ const PANEL_WARNING_COLOR = '#f0c67a';
 const PANEL_POSITIVE_COLOR = '#9cf0bd';
 const PANEL_TITLE = 'NEURODRIVECAR / MVP 08';
 const SENSOR_DECIMALS = 2;
+const STATUS_LINE_HEIGHT = 28;
+const STATUS_TOP_PADDING = 14;
+const STATUS_SECTION_GAP = 6;
 
 export interface HudRenderData {
   width: number;
@@ -44,9 +47,9 @@ export class Hud {
     const statusPanelX = margin;
     const statusPanelY = margin;
     const statusPanelWidth = Math.min(232, Math.max(196, data.width * 0.19));
-    const statusPanelHeight = 316;
+    const statusPanelHeight = 332;
     const neuralPanelWidth = Math.min(520, Math.max(360, data.width * 0.3));
-    const neuralPanelHeight = Math.min(248, Math.max(212, data.height * 0.22));
+    const neuralPanelHeight = Math.min(272, Math.max(232, data.height * 0.24));
     const neuralPanelX = data.width - neuralPanelWidth - margin;
     const neuralPanelY = margin;
 
@@ -81,6 +84,18 @@ export class Hud {
     const statusColor = data.damaged ? PANEL_ALERT_COLOR : PANEL_OK_COLOR;
     const controlModeColor = data.controlMode === 'ai' ? PANEL_AI_COLOR : PANEL_TEXT_COLOR;
     const deltaColor = closingDelta >= 0 ? PANEL_POSITIVE_COLOR : PANEL_WARNING_COLOR;
+    const textX = x + 12;
+    const line1Y = y + STATUS_TOP_PADDING;
+    const line2Y = line1Y + STATUS_LINE_HEIGHT;
+    const line3Y = line2Y + STATUS_LINE_HEIGHT + STATUS_SECTION_GAP;
+    const line4Y = line3Y + STATUS_LINE_HEIGHT;
+    const line5Y = line4Y + STATUS_LINE_HEIGHT;
+    const line6Y = line5Y + STATUS_LINE_HEIGHT;
+    const line7Y = line6Y + STATUS_LINE_HEIGHT;
+    const line8Y = line7Y + STATUS_LINE_HEIGHT + STATUS_SECTION_GAP;
+    const line9Y = line8Y + STATUS_LINE_HEIGHT;
+    const line10Y = line9Y + STATUS_LINE_HEIGHT;
+    const sensorStripY = line10Y + STATUS_LINE_HEIGHT + 8;
 
     ctx.save();
     ctx.fillStyle = PANEL_BACKGROUND_COLOR;
@@ -92,38 +107,38 @@ export class Hud {
     ctx.font = '11px "SF Mono", Monaco, monospace';
     ctx.textBaseline = 'top';
     ctx.fillStyle = PANEL_TEXT_COLOR;
-    ctx.fillText(PANEL_TITLE, x + 12, y + 12);
-    ctx.fillText(`FPS ${data.framesPerSecond.toFixed(1)}`, x + 12, y + 34);
+    ctx.fillText(PANEL_TITLE, textX, line1Y);
+    ctx.fillText(`FPS ${data.framesPerSecond.toFixed(1)}`, textX, line2Y);
 
     ctx.fillStyle = statusColor;
-    ctx.fillText(`STATE ${statusLabel}`, x + 12, y + 54);
+    ctx.fillText(`STATE ${statusLabel}`, textX, line3Y);
 
     ctx.fillStyle = controlModeColor;
-    ctx.fillText(`MODE ${data.controlMode.toUpperCase()}  [M]`, x + 12, y + 74);
+    ctx.fillText(`MODE ${data.controlMode.toUpperCase()}  [M]`, textX, line4Y);
 
     ctx.fillStyle = PANEL_TEXT_COLOR;
     ctx.fillText(
       `SPEED ${Math.abs(data.speed).toFixed(1)} ${getVelocityDirectionLabel(data.speed)}`,
-      x + 12,
-      y + 94
+      textX,
+      line5Y
     );
-    ctx.fillText(`DIST ${data.traveledDistance.toFixed(1)}`, x + 12, y + 114);
-    ctx.fillText(`TRAFFIC ${data.trafficCount}`, x + 12, y + 134);
-    ctx.fillText(`T SPEED ${data.trafficTargetSpeed.toFixed(1)}`, x + 12, y + 154);
+    ctx.fillText(`DIST ${data.traveledDistance.toFixed(1)}`, textX, line6Y);
+    ctx.fillText(`TRAFFIC ${data.trafficCount}`, textX, line7Y);
+    ctx.fillText(`T SPEED ${data.trafficTargetSpeed.toFixed(1)}`, textX, line8Y);
 
     ctx.fillStyle = deltaColor;
-    ctx.fillText(`DELTA ${closingDelta.toFixed(1)}`, x + 12, y + 174);
+    ctx.fillText(`DELTA ${closingDelta.toFixed(1)}`, textX, line9Y);
 
     ctx.fillStyle = PANEL_MUTED_TEXT_COLOR;
-    ctx.fillText(`L SPD ${data.laneSpeedLabel}`, x + 12, y + 196);
-    ctx.fillText(`S HIT ${data.sensorHitCount}`, x + 12, y + 216);
+    ctx.fillText(`L SPD ${data.laneSpeedLabel}`, textX, line10Y);
+    ctx.fillText(`S HIT ${data.sensorHitCount}`, textX, line10Y + STATUS_LINE_HEIGHT);
     ctx.fillText(
       `CTRL ${formatControlState(data.controlState)}`,
-      x + 12,
-      y + 236
+      textX,
+      line10Y + STATUS_LINE_HEIGHT * 2
     );
 
-    this.renderSensorStrip(ctx, x + 12, y + 270, width - 24, data.sensorReadings);
+    this.renderSensorStrip(ctx, x + 12, sensorStripY, width - 24, data.sensorReadings);
 
     ctx.restore();
   }
