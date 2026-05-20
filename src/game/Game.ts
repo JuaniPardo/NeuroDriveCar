@@ -143,7 +143,7 @@ export class Game implements Updatable, Renderable {
 
   private renderDebugOverlay(ctx: CanvasRenderingContext2D): void {
     const panelWidth = 236;
-    const panelHeight = 208;
+    const panelHeight = 192;
     const x = 16;
     const y = 16;
 
@@ -177,7 +177,6 @@ export class Game implements Updatable, Renderable {
       y + 162
     );
     ctx.fillText(`LANE 1 ${this.road.getLaneCenter(0).toFixed(1)}`, x + 12, y + 178);
-    ctx.fillText(`LANE 2 ${this.road.getLaneCenter(1).toFixed(1)}`, x + 12, y + 194);
 
     ctx.restore();
   }
@@ -189,7 +188,6 @@ export class Game implements Updatable, Renderable {
 
     return this.playerCar.speed > 0 ? 'FORWARD' : 'REVERSE';
   }
-
   private renderWorldBackdrop(
     ctx: CanvasRenderingContext2D,
     visibleTop: number,

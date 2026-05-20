@@ -52,7 +52,8 @@ export class Car {
   }
 
   public update(deltaTimeSeconds: number): void {
-    const throttleInput = Number(this.controls.forward) - Number(this.controls.reverse);
+    const throttleInput =
+      Number(this.controls.forward) - Number(this.controls.reverse);
 
     this.speed = updateSpeed(
       this.speed,
@@ -61,7 +62,8 @@ export class Car {
       this.physics
     );
 
-    const steeringInput = Number(this.controls.right) - Number(this.controls.left);
+    const steeringInput =
+      Number(this.controls.right) - Number(this.controls.left);
     this.steeringAngle = updateSteeringAngle(
       this.steeringAngle,
       steeringInput,
@@ -69,12 +71,13 @@ export class Car {
       this.physics
     );
 
-    this.angle += getRotationDelta(
+    const rotationDelta = getRotationDelta(
       this.speed,
       this.steeringAngle,
       deltaTimeSeconds,
       this.physics
     );
+    this.angle -= rotationDelta;
 
     const sin = Math.sin(this.angle);
     const cos = Math.cos(this.angle);
@@ -87,7 +90,7 @@ export class Car {
   public render(ctx: CanvasRenderingContext2D): void {
     ctx.save();
     ctx.translate(this.x, this.y);
-    ctx.rotate(this.angle);
+    ctx.rotate(-this.angle);
 
     ctx.fillStyle = CAR_BODY_COLOR;
     ctx.strokeStyle = CAR_OUTLINE_COLOR;
@@ -178,18 +181,18 @@ export class Car {
     ctx.strokeStyle = 'rgba(127, 224, 196, 0.85)';
     ctx.beginPath();
     ctx.moveTo(0, 0);
-    ctx.lineTo(0, DEBUG_FORWARD_VECTOR_LENGTH);
+    ctx.lineTo(0, -DEBUG_FORWARD_VECTOR_LENGTH);
     ctx.stroke();
 
     ctx.strokeStyle = 'rgba(255, 180, 120, 0.9)';
     ctx.beginPath();
     ctx.moveTo(0, 0);
-    ctx.lineTo(0, velocityLength * speedDirection);
+    ctx.lineTo(0, -velocityLength * speedDirection);
     ctx.stroke();
 
     ctx.fillStyle = 'rgba(255, 180, 120, 0.9)';
     ctx.beginPath();
-    ctx.arc(0, velocityLength * speedDirection, 3, 0, Math.PI * 2);
+    ctx.arc(0, -velocityLength * speedDirection, 3, 0, Math.PI * 2);
     ctx.fill();
   }
 }
