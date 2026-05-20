@@ -10,7 +10,10 @@ import {
 const CAR_BODY_COLOR = '#7fe0c4';
 const CAR_CABIN_COLOR = '#163039';
 const CAR_OUTLINE_COLOR = '#ecfff7';
-const DEBUG_VECTOR_SPEED_SCALE = 0.45;
+const FRONT_MARKER_COLOR = '#f4fff9';
+const REAR_LIGHT_COLOR = '#ff6b6b';
+const REAR_BUMPER_COLOR = '#5c1f28';
+const DEBUG_VECTOR_SPEED_SCALE = 0.28;
 const DEBUG_FORWARD_VECTOR_LENGTH = 34;
 const ENABLE_DEBUG_VECTORS = true;
 
@@ -107,6 +110,36 @@ export class Car {
       this.height * 0.38
     );
 
+    ctx.fillStyle = FRONT_MARKER_COLOR;
+    ctx.beginPath();
+    ctx.moveTo(0, -this.height * 0.42);
+    ctx.lineTo(this.width * 0.14, -this.height * 0.28);
+    ctx.lineTo(-this.width * 0.14, -this.height * 0.28);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = REAR_BUMPER_COLOR;
+    ctx.fillRect(
+      -this.width * 0.28,
+      this.height * 0.28,
+      this.width * 0.56,
+      this.height * 0.08
+    );
+
+    ctx.fillStyle = REAR_LIGHT_COLOR;
+    ctx.fillRect(
+      -this.width * 0.3,
+      this.height * 0.24,
+      this.width * 0.14,
+      this.height * 0.08
+    );
+    ctx.fillRect(
+      this.width * 0.16,
+      this.height * 0.24,
+      this.width * 0.14,
+      this.height * 0.08
+    );
+
     ctx.strokeStyle = 'rgba(236, 255, 247, 0.42)';
     ctx.lineWidth = 3;
     ctx.beginPath();
@@ -123,6 +156,7 @@ export class Car {
 
   private renderDebugVectors(ctx: CanvasRenderingContext2D): void {
     const velocityLength = this.speed * DEBUG_VECTOR_SPEED_SCALE;
+    const speedDirection = this.speed >= 0 ? 1 : -1;
 
     ctx.lineWidth = 2;
 
@@ -135,7 +169,12 @@ export class Car {
     ctx.strokeStyle = 'rgba(255, 180, 120, 0.9)';
     ctx.beginPath();
     ctx.moveTo(0, 0);
-    ctx.lineTo(0, -velocityLength);
+    ctx.lineTo(0, -velocityLength * speedDirection);
     ctx.stroke();
+
+    ctx.fillStyle = 'rgba(255, 180, 120, 0.9)';
+    ctx.beginPath();
+    ctx.arc(0, -velocityLength * speedDirection, 3, 0, Math.PI * 2);
+    ctx.fill();
   }
 }

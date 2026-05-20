@@ -143,7 +143,7 @@ export class Game implements Updatable, Renderable {
 
   private renderDebugOverlay(ctx: CanvasRenderingContext2D): void {
     const panelWidth = 236;
-    const panelHeight = 192;
+    const panelHeight = 208;
     const x = 16;
     const y = 16;
 
@@ -171,10 +171,23 @@ export class Game implements Updatable, Renderable {
     ctx.fillText(`SPEED ${this.playerCar.speed.toFixed(1)}`, x + 12, y + 114);
     ctx.fillText(`ANGLE ${this.playerCar.angle.toFixed(2)} rad`, x + 12, y + 130);
     ctx.fillText(`STEER ${this.playerCar.steeringAngle.toFixed(2)} rad`, x + 12, y + 146);
-    ctx.fillText(`LANE 1 ${this.road.getLaneCenter(0).toFixed(1)}`, x + 12, y + 162);
-    ctx.fillText(`LANE 2 ${this.road.getLaneCenter(1).toFixed(1)}`, x + 12, y + 178);
+    ctx.fillText(
+      `VEL DIR ${this.getVelocityDirectionLabel()}`,
+      x + 12,
+      y + 162
+    );
+    ctx.fillText(`LANE 1 ${this.road.getLaneCenter(0).toFixed(1)}`, x + 12, y + 178);
+    ctx.fillText(`LANE 2 ${this.road.getLaneCenter(1).toFixed(1)}`, x + 12, y + 194);
 
     ctx.restore();
+  }
+
+  private getVelocityDirectionLabel(): string {
+    if (Math.abs(this.playerCar.speed) < 0.001) {
+      return 'STOP';
+    }
+
+    return this.playerCar.speed > 0 ? 'FORWARD' : 'REVERSE';
   }
 
   private renderWorldBackdrop(
