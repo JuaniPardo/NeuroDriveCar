@@ -3,11 +3,11 @@ import { DEFAULT_CAR_PHYSICS } from '../car/Physics';
 import type { Segment } from '../collision/geometry';
 import { Road } from '../world/Road';
 
-const TRAFFIC_SPAWN_OFFSET = 280;
+const TRAFFIC_INITIAL_GAP = 120;
 const TRAFFIC_SPAWN_DISTANCE = 1_400;
 const TRAFFIC_DESPAWN_DISTANCE = 420;
 const TRAFFIC_ROW_SPACING = 260;
-const TRAFFIC_SPEED = 132;
+const TRAFFIC_SPEED = DEFAULT_CAR_PHYSICS.maxForwardSpeed * 0.8;
 const TRAFFIC_CAR_WIDTH = 40;
 const TRAFFIC_CAR_HEIGHT = 72;
 const TRAFFIC_COLLISION_MARGIN = 18;
@@ -52,7 +52,7 @@ export class TrafficManager {
 
   public reset(playerX: number, playerY: number): void {
     this.clear();
-    this.nextSpawnY = playerY + TRAFFIC_SPAWN_OFFSET;
+    this.nextSpawnY = playerY + TRAFFIC_INITIAL_GAP;
     this.patternIndex = 0;
     this.ensureTrafficAhead(playerX, playerY);
   }
