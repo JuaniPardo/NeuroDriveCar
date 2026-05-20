@@ -61,7 +61,7 @@ export class Car {
       this.physics
     );
 
-    const steeringInput = Number(this.controls.left) - Number(this.controls.right);
+    const steeringInput = Number(this.controls.right) - Number(this.controls.left);
     this.steeringAngle = updateSteeringAngle(
       this.steeringAngle,
       steeringInput,
@@ -113,22 +113,22 @@ export class Car {
 
     ctx.fillStyle = FRONT_MARKER_COLOR;
     ctx.beginPath();
-    ctx.moveTo(0, this.height * 0.42);
-    ctx.lineTo(this.width * 0.14, this.height * 0.28);
-    ctx.lineTo(-this.width * 0.14, this.height * 0.28);
+    ctx.moveTo(0, -this.height * 0.42);
+    ctx.lineTo(this.width * 0.14, -this.height * 0.28);
+    ctx.lineTo(-this.width * 0.14, -this.height * 0.28);
     ctx.closePath();
     ctx.fill();
 
     ctx.fillStyle = FRONT_LIGHT_COLOR;
     ctx.fillRect(
       -this.width * 0.3,
-      this.height * 0.2,
+      -this.height * 0.28,
       this.width * 0.14,
       this.height * 0.08
     );
     ctx.fillRect(
       this.width * 0.16,
-      this.height * 0.2,
+      -this.height * 0.28,
       this.width * 0.14,
       this.height * 0.08
     );
@@ -136,7 +136,7 @@ export class Car {
     ctx.fillStyle = REAR_BUMPER_COLOR;
     ctx.fillRect(
       -this.width * 0.28,
-      -this.height * 0.36,
+      this.height * 0.28,
       this.width * 0.56,
       this.height * 0.08
     );
@@ -144,13 +144,13 @@ export class Car {
     ctx.fillStyle = REAR_LIGHT_COLOR;
     ctx.fillRect(
       -this.width * 0.3,
-      -this.height * 0.32,
+      this.height * 0.24,
       this.width * 0.14,
       this.height * 0.08
     );
     ctx.fillRect(
       this.width * 0.16,
-      -this.height * 0.32,
+      this.height * 0.24,
       this.width * 0.14,
       this.height * 0.08
     );
@@ -158,8 +158,8 @@ export class Car {
     ctx.strokeStyle = 'rgba(236, 255, 247, 0.42)';
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(0, this.height * 0.34);
-    ctx.lineTo(0, this.height * 0.18);
+    ctx.moveTo(0, -this.height * 0.34);
+    ctx.lineTo(0, -this.height * 0.18);
     ctx.stroke();
 
     if (ENABLE_DEBUG_VECTORS) {
