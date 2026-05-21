@@ -15,6 +15,8 @@ const SENSOR_STRIP_HEIGHT = 16;
 const STATUS_LINE_HEIGHT = 25;
 const STATUS_TOP_PADDING = 14;
 const STATUS_SECTION_GAP = 8;
+const INSTRUCTIONS_TITLE_COLOR = '#cde7d5';
+const INSTRUCTIONS_TEXT_COLOR = '#9db7aa';
 
 export interface HudRenderData {
   width: number;
@@ -51,7 +53,9 @@ export class Hud {
     const statusPanelX = margin;
     const statusPanelY = margin;
     const statusPanelWidth = Math.min(340, Math.max(304, data.width * 0.26));
-    const statusPanelHeight = Math.min(472, Math.max(420, data.height - margin * 2));
+    const statusPanelHeight = 520;
+    const instructionsPanelY = statusPanelY + statusPanelHeight + 12;
+    const instructionsPanelHeight = 94;
     const neuralPanelWidth = Math.min(420, Math.max(320, data.width * 0.22));
     const neuralPanelHeight = Math.min(360, Math.max(300, data.height * 0.34));
     const neuralPanelX = data.width - neuralPanelWidth - margin;
@@ -64,6 +68,13 @@ export class Hud {
       statusPanelWidth,
       statusPanelHeight,
       data
+    );
+    this.renderInstructionsPanel(
+      ctx,
+      statusPanelX,
+      instructionsPanelY,
+      statusPanelWidth,
+      instructionsPanelHeight
     );
     this.neuralVisualizer.render(
       ctx,
@@ -102,7 +113,7 @@ export class Hud {
     const line12Y = line11Y + compactLineHeight;
     const line13Y = line12Y + compactLineHeight;
     const sensorLabelY = line13Y + compactLineHeight + 8;
-    const sensorStripY = sensorLabelY + 18;
+    const sensorStripY = sensorLabelY + 30;
 
     ctx.save();
     ctx.fillStyle = PANEL_BACKGROUND_COLOR;
@@ -143,10 +154,43 @@ export class Hud {
     ctx.fillText(`L SPD ${data.laneSpeedLabel}`, textX, sensorLabelY - 44);
     ctx.fillText(`S HIT ${data.sensorHitCount}`, textX, sensorLabelY - 22);
     ctx.fillText(`CTRL ${formatControlState(data.controlState)}`, textX, sensorLabelY);
-    ctx.fillText('SENSORS', textX, sensorLabelY + 18);
+    ctx.fillText('SENSORS', textX, sensorLabelY + 4);
 
     this.renderSensorStrip(ctx, x + 12, sensorStripY, width - 24, data.sensorReadings);
 
+    ctx.restore();
+  }
+
+  private renderInstructionsPanel(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    width: number,
+    height: number
+  ): void {
+    const textX = x + 12;
+    const line1Y = y + 12;
+    const line2Y = line1Y + 24;
+    const line3Y = line2Y + 18;
+    const line4Y = line3Y + 18;
+
+    ctx.save();
+    ctx.fillStyle = PANEL_BACKGROUND_COLOR;
+    ctx.strokeStyle = PANEL_BORDER_COLOR;
+    ctx.lineWidth = 1;
+    ctx.fillRect(x, y, width, height);
+    ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
+
+    ctx.textBaseline = 'top';
+    ctx.font = '10px "SF Mono", Monaco, monospace';
+    ctx.fillStyle = INSTRUCTIONS_TITLE_COLOR;
+    ctx.fillText('INSTRUCTIONS', textX, line1Y);
+
+    ctx.fillStyle = INSTRUCTIONS_TEXT_COLOR;
+    ctx.font = '9px "SF Mono", Monaco, monospace';
+    ctx.fillText('Best brain is auto-saved in localStorage.', textX, line2Y);
+    ctx.fillText('Reload or press R to restart from the saved champion.', textX, line3Y);
+    ctx.fillText('Population cars mutate around the current best genome.', textX, line4Y);
     ctx.restore();
   }
 
