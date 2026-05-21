@@ -6,6 +6,9 @@ import {
 } from './NeuralNetwork';
 
 const DEFAULT_HIDDEN_LAYER_SIZE = 6;
+const FORWARD_OUTPUT_THRESHOLD = 0.48;
+const STEERING_OUTPUT_THRESHOLD = 0.5;
+const REVERSE_OUTPUT_THRESHOLD = 0.6;
 
 export const BRAIN_OUTPUT_LABELS = [
   'forward',
@@ -55,35 +58,16 @@ export class Brain {
     const leftVisual = visualOutputs[1] ?? 0;
     const rightVisual = visualOutputs[2] ?? 0;
     const reverseVisual = visualOutputs[3] ?? 0;
-    const noDriveCommand = outputs[0] === 0 && outputs[3] === 0;
-    const bothDriveCommands = outputs[0] === 1 && outputs[3] === 1;
-    const noSteerCommand = outputs[1] === 0 && outputs[2] === 0;
-    const bothSteerCommands = outputs[1] === 1 && outputs[2] === 1;
-
     const forward =
-      noDriveCommand
-        ? forwardVisual >= reverseVisual
-        : bothDriveCommands
-          ? forwardVisual >= reverseVisual
-          : outputs[0] === 1;
+      forwardVisual > reverseVisual &&
+      forwardVisual > FORWARD_OUTPUT_THRESHOLD;
     const reverse =
-      noDriveCommand
-        ? false
-        : bothDriveCommands
-          ? reverseVisual > forwardVisual
-          : outputs[3] === 1;
+      reverseVisual > forwardVisual &&
+      reverseVisual > REVERSE_OUTPUT_THRESHOLD;
     const left =
-      noSteerCommand
-        ? false
-        : bothSteerCommands
-          ? leftVisual > rightVisual
-          : outputs[1] === 1;
+      leftVisual > rightVisual && leftVisual > STEERING_OUTPUT_THRESHOLD;
     const right =
-      noSteerCommand
-        ? false
-        : bothSteerCommands
-          ? rightVisual >= leftVisual
-          : outputs[2] === 1;
+      rightVisual > leftVisual && rightVisual > STEERING_OUTPUT_THRESHOLD;
 
     return {
       forward,
@@ -115,5 +99,22 @@ export class Brain {
 
   public importGenome(genome: BrainGenome): void {
     this.network.applySnapshot(genome.network);
+  }
+
+  public canImportGenome(genome: BrainGenome): boolean {
+    const expectedLayerSizes = this.network.layerSizes;
+    const snapshotLayerSizes = genome.network.layerSizes;
+
+    if (expectedLayerSizes.length !== snapshotLayerSizes.length) {
+      return false;
+    }
+
+    for (let index = 0; index < expectedLayerSizes.length; index += 1) {
+      if (expectedLayerSizes[index] !== snapshotLayerSizes[index]) {
+        return false;
+      }
+    }
+
+    return true;
   }
 }

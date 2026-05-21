@@ -16,6 +16,15 @@ const AGENT_MARKER_RADIUS = 3.5;
 const DEFAULT_MUTATION_AMOUNT = 0.18;
 const STALL_PROGRESS_EPSILON = 0.25;
 const STALL_TIMEOUT_SECONDS = 2.5;
+const LOW_SPEED_THRESHOLD = 36;
+const SEEDED_MUTATION_MIN = 0.05;
+const SEEDED_MUTATION_MAX = 0.2;
+const FITNESS_SURVIVAL_BONUS = 18;
+const FITNESS_EARLY_CRASH_WINDOW_SECONDS = 6;
+const FITNESS_EARLY_CRASH_PENALTY = 120;
+const FITNESS_LATERAL_OFFSET_PENALTY = 0.12;
+const FITNESS_STEERING_PENALTY = 18;
+const FITNESS_STAGNATION_PENALTY = 48;
 
 export type PopulationSource = 'random' | 'saved';
 
@@ -52,6 +61,11 @@ export class PopulationManager {
   private readonly cars: Car[] = [];
   private readonly progressByCar: number[] = [];
   private readonly stallTimeByCar: number[] = [];
+  private readonly survivalTimeByCar: number[] = [];
+  private readonly lateralOffsetByCar: number[] = [];
+  private readonly steeringEffortByCar: number[] = [];
+  private readonly lowSpeedTimeByCar: number[] = [];
+  private readonly fitnessByCar: number[] = [];
   private readonly stats: PopulationStats;
   private generation = 1;
   private seedGenome: BrainGenome | null = null;
@@ -92,7 +106,8 @@ export class PopulationManager {
     }
 
     this.clear();
-    this.populationSource = this.seedGenome === null ? 'random' : 'saved';
+    let activeSeedGenome = this.seedGenome;
+    this.populationSource = activeSeedGenome === null ? 'random' : 'saved';
 
     for (let index = 0; index < this.populationSize; index += 1) {
       const car = new Car(
@@ -106,11 +121,20 @@ export class PopulationManager {
         }
       );
 
-      if (this.seedGenome !== null && car.brain !== null) {
+      if (
+        activeSeedGenome !== null &&
+        car.brain !== null &&
+        !car.brain.canImportGenome(activeSeedGenome)
+      ) {
+        activeSeedGenome = null;
+        this.populationSource = 'random';
+      }
+
+      if (activeSeedGenome !== null && car.brain !== null) {
         const genome =
           index === 0
-            ? cloneBrainGenome(this.seedGenome)
-            : createMutatedGenome(this.seedGenome, this.getMutationAmount(index));
+            ? cloneBrainGenome(activeSeedGenome)
+            : createMutatedGenome(activeSeedGenome, this.getMutationAmount(index));
 
         car.brain.importGenome(genome);
       }
@@ -118,6 +142,11 @@ export class PopulationManager {
       this.cars.push(car);
       this.progressByCar.push(0);
       this.stallTimeByCar.push(0);
+      this.survivalTimeByCar.push(0);
+      this.lateralOffsetByCar.push(0);
+      this.steeringEffortByCar.push(0);
+      this.lowSpeedTimeByCar.push(0);
+      this.fitnessByCar.push(0);
     }
 
     this.stats.generation = this.generation;
@@ -137,10 +166,20 @@ export class PopulationManager {
       const previousBestProgress = this.progressByCar[index];
 
       car.update(deltaTimeSeconds, roadBorders);
+      this.survivalTimeByCar[index] += deltaTimeSeconds;
+      this.lateralOffsetByCar[index] +=
+        Math.abs(car.x - this.spawnX) * deltaTimeSeconds;
+      this.steeringEffortByCar[index] +=
+        Math.abs(car.steeringAngle) * deltaTimeSeconds;
+
+      if (Math.abs(car.speed) < LOW_SPEED_THRESHOLD) {
+        this.lowSpeedTimeByCar[index] += deltaTimeSeconds;
+      }
 
       const worldProgress = this.spawnY - car.y;
+      const progressDelta = Math.max(0, worldProgress - previousBestProgress);
 
-      if (worldProgress > this.progressByCar[index]) {
+      if (progressDelta > 0) {
         this.progressByCar[index] = worldProgress;
       }
 
@@ -148,8 +187,16 @@ export class PopulationManager {
         continue;
       }
 
-      if (this.progressByCar[index] > previousBestProgress + STALL_PROGRESS_EPSILON) {
+      if (progressDelta > STALL_PROGRESS_EPSILON) {
         this.stallTimeByCar[index] = 0;
+        continue;
+      }
+
+      if (progressDelta > 0 || Math.abs(car.speed) >= LOW_SPEED_THRESHOLD) {
+        this.stallTimeByCar[index] = Math.max(
+          0,
+          this.stallTimeByCar[index] - deltaTimeSeconds * 0.5
+        );
         continue;
       }
 
@@ -173,21 +220,33 @@ export class PopulationManager {
   public refreshStats(): void {
     let aliveCount = 0;
     let bestAliveIndex = -1;
+    let bestAliveFitness = -Infinity;
     let bestAliveProgress = -Infinity;
     let bestAliveY = Number.POSITIVE_INFINITY;
     let bestOverallIndex = 0;
+    let bestOverallFitness = -Infinity;
     let bestOverallProgress = -Infinity;
     let bestOverallY = Number.POSITIVE_INFINITY;
 
     for (let index = 0; index < this.cars.length; index += 1) {
       const car = this.cars[index];
       const progress = this.progressByCar[index];
+      const fitness = this.calculateFitnessScore(index, car);
+
+      this.fitnessByCar[index] = fitness;
 
       if (
-        progress > bestOverallProgress ||
-        (progress === bestOverallProgress && car.y < bestOverallY)
+        this.isBetterCandidate(
+          fitness,
+          progress,
+          car.y,
+          bestOverallFitness,
+          bestOverallProgress,
+          bestOverallY
+        )
       ) {
         bestOverallIndex = index;
+        bestOverallFitness = fitness;
         bestOverallProgress = progress;
         bestOverallY = car.y;
       }
@@ -199,10 +258,17 @@ export class PopulationManager {
       aliveCount += 1;
 
       if (
-        progress > bestAliveProgress ||
-        (progress === bestAliveProgress && car.y < bestAliveY)
+        this.isBetterCandidate(
+          fitness,
+          progress,
+          car.y,
+          bestAliveFitness,
+          bestAliveProgress,
+          bestAliveY
+        )
       ) {
         bestAliveIndex = index;
+        bestAliveFitness = fitness;
         bestAliveProgress = progress;
         bestAliveY = car.y;
       }
@@ -322,15 +388,62 @@ export class PopulationManager {
   }
 
   private getMutationAmount(index: number): number {
+    const baseMutationAmount = clampMutationAmount(
+      this.mutationAmount,
+      SEEDED_MUTATION_MIN,
+      SEEDED_MUTATION_MAX
+    );
+
     if (index <= 4) {
-      return this.mutationAmount * 0.45;
+      return baseMutationAmount * 0.45;
     }
 
     if (index <= 12) {
-      return this.mutationAmount * 0.8;
+      return baseMutationAmount * 0.8;
     }
 
-    return this.mutationAmount;
+    return baseMutationAmount;
+  }
+
+  private calculateFitnessScore(index: number, car: Car): number {
+    const progress = this.progressByCar[index];
+    const survivalBonus = this.survivalTimeByCar[index] * FITNESS_SURVIVAL_BONUS;
+    const earlyCrashPenalty =
+      car.damaged &&
+      this.survivalTimeByCar[index] < FITNESS_EARLY_CRASH_WINDOW_SECONDS
+        ? (FITNESS_EARLY_CRASH_WINDOW_SECONDS - this.survivalTimeByCar[index]) *
+          FITNESS_EARLY_CRASH_PENALTY
+        : 0;
+    const lateralOffsetPenalty =
+      this.lateralOffsetByCar[index] * FITNESS_LATERAL_OFFSET_PENALTY;
+    const steeringPenalty =
+      this.steeringEffortByCar[index] * FITNESS_STEERING_PENALTY;
+    const stagnationPenalty =
+      this.lowSpeedTimeByCar[index] * FITNESS_STAGNATION_PENALTY;
+
+    return (
+      progress +
+      survivalBonus -
+      earlyCrashPenalty -
+      lateralOffsetPenalty -
+      steeringPenalty -
+      stagnationPenalty
+    );
+  }
+
+  private isBetterCandidate(
+    fitness: number,
+    progress: number,
+    y: number,
+    bestFitness: number,
+    bestProgress: number,
+    bestY: number
+  ): boolean {
+    return (
+      fitness > bestFitness ||
+      (fitness === bestFitness && progress > bestProgress) ||
+      (fitness === bestFitness && progress === bestProgress && y < bestY)
+    );
   }
 
   private clear(): void {
@@ -341,5 +454,14 @@ export class PopulationManager {
     this.cars.length = 0;
     this.progressByCar.length = 0;
     this.stallTimeByCar.length = 0;
+    this.survivalTimeByCar.length = 0;
+    this.lateralOffsetByCar.length = 0;
+    this.steeringEffortByCar.length = 0;
+    this.lowSpeedTimeByCar.length = 0;
+    this.fitnessByCar.length = 0;
   }
+}
+
+function clampMutationAmount(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }

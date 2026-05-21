@@ -5,7 +5,6 @@ import {
   type Point,
   type Segment,
 } from '../collision/geometry';
-import { lerp } from '../utils/math';
 import { FONT_MONO, THEME } from '../utils/visualTheme';
 import { createRay, type Ray, updateRay } from './Ray';
 
@@ -15,13 +14,9 @@ const SENSOR_VALUE_LABEL_OFFSET = 12;
 const SENSOR_HIT_POINT_RADIUS = 3;
 
 export interface SensorConfig {
-  forwardRayCount: number;
-  forwardRayLength: number;
-  forwardRaySpread: number;
-  enableSideRays: boolean;
-  sideRayLength: number;
-  enableRearRay: boolean;
-  rearRayLength: number;
+  rayCount: number;
+  rayLength: number;
+  rayAnglesDeg: readonly number[];
 }
 
 export interface SensorReading extends Intersection {
@@ -29,13 +24,9 @@ export interface SensorReading extends Intersection {
 }
 
 export const DEFAULT_SENSOR_CONFIG: SensorConfig = {
-  forwardRayCount: 5,
-  forwardRayLength: 240,
-  forwardRaySpread: Math.PI * 0.6,
-  enableSideRays: true,
-  sideRayLength: 160,
-  enableRearRay: true,
-  rearRayLength: 120,
+  rayCount: 9,
+  rayLength: 180,
+  rayAnglesDeg: [-90, -55, -25, -8, 0, 8, 25, 55, 90],
 };
 
 interface SensorRayDefinition {
@@ -53,6 +44,7 @@ export class Sensor {
     this.config = {
       ...DEFAULT_SENSOR_CONFIG,
       ...config,
+      rayAnglesDeg: [...(config.rayAnglesDeg ?? DEFAULT_SENSOR_CONFIG.rayAnglesDeg)],
     };
     this.rays = [];
     this.readings = [];
@@ -171,45 +163,19 @@ export class Sensor {
   }
 
   private getRayDefinitions(): SensorRayDefinition[] {
-    const rayDefinitions: SensorRayDefinition[] = [];
+    const targetRayCount = Math.max(1, this.config.rayCount);
+    const configuredAngles = this.config.rayAnglesDeg.slice(0, targetRayCount);
+    const fallbackAngles = DEFAULT_SENSOR_CONFIG.rayAnglesDeg;
 
-    if (this.config.enableSideRays) {
-      rayDefinitions.push({
-        angleOffset: Math.PI * 0.5,
-        length: this.config.sideRayLength,
-      });
+    while (configuredAngles.length < targetRayCount) {
+      const fallbackIndex = configuredAngles.length % fallbackAngles.length;
+      configuredAngles.push(fallbackAngles[fallbackIndex]);
     }
 
-    const forwardRayCount = Math.max(1, this.config.forwardRayCount);
-
-    for (let index = 0; index < forwardRayCount; index += 1) {
-      const ratio = forwardRayCount === 1 ? 0.5 : index / (forwardRayCount - 1);
-
-      rayDefinitions.push({
-        angleOffset: lerp(
-          this.config.forwardRaySpread * 0.5,
-          -this.config.forwardRaySpread * 0.5,
-          ratio
-        ),
-        length: this.config.forwardRayLength,
-      });
-    }
-
-    if (this.config.enableSideRays) {
-      rayDefinitions.push({
-        angleOffset: -Math.PI * 0.5,
-        length: this.config.sideRayLength,
-      });
-    }
-
-    if (this.config.enableRearRay) {
-      rayDefinitions.push({
-        angleOffset: Math.PI,
-        length: this.config.rearRayLength,
-      });
-    }
-
-    return rayDefinitions;
+    return configuredAngles.map((angleDeg) => ({
+      angleOffset: degreesToRadians(angleDeg),
+      length: this.config.rayLength,
+    }));
   }
 
   private getClosestReading(
@@ -272,4 +238,8 @@ export class Sensor {
       valueLabelY
     );
   }
+}
+
+function degreesToRadians(angleDeg: number): number {
+  return (angleDeg * Math.PI) / 180;
 }

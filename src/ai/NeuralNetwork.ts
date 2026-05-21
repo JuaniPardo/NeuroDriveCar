@@ -12,6 +12,11 @@ export interface NeuralNetworkSnapshot {
   readonly layers: readonly NeuralLayerSnapshot[];
 }
 
+const FORWARD_OUTPUT_INDEX = 0;
+const REVERSE_OUTPUT_INDEX = 3;
+const INITIAL_FORWARD_OUTPUT_BIAS = 0.55;
+const INITIAL_REVERSE_OUTPUT_BIAS = -0.25;
+
 export class NeuralLayer {
   public readonly inputCount: number;
   public readonly outputCount: number;
@@ -20,7 +25,11 @@ export class NeuralLayer {
   public readonly outputs: number[];
   public readonly visualOutputs: number[];
 
-  public constructor(inputCount: number, outputCount: number) {
+  public constructor(
+    inputCount: number,
+    outputCount: number,
+    outputBiases: Partial<Record<number, number>> = {}
+  ) {
     this.inputCount = inputCount;
     this.outputCount = outputCount;
     this.weights = [];
@@ -38,6 +47,22 @@ export class NeuralLayer {
       this.weights.push(row);
       this.biases.push(randomWeight());
     }
+
+    for (const [outputIndexText, outputBias] of Object.entries(outputBiases)) {
+      const outputIndex = Number(outputIndexText);
+
+      if (
+        !Number.isInteger(outputIndex) ||
+        outputIndex < 0 ||
+        outputIndex >= this.outputCount ||
+        outputBias === undefined ||
+        outputBias === 0
+      ) {
+        continue;
+      }
+
+      this.biases[outputIndex] += outputBias;
+    }
   }
 
   public feedForward(inputs: readonly number[]): readonly number[] {
@@ -52,7 +77,7 @@ export class NeuralLayer {
       this.outputs[outputIndex] = sum > 0 ? 1 : 0;
     }
 
-    return this.outputs;
+    return this.visualOutputs;
   }
 
   public getSnapshot(): NeuralLayerSnapshot {
@@ -100,7 +125,20 @@ export class NeuralNetwork {
     this.outputs = new Array(layerSizes[layerSizes.length - 1]).fill(0);
 
     for (let index = 0; index < layerSizes.length - 1; index += 1) {
-      this.layers.push(new NeuralLayer(layerSizes[index], layerSizes[index + 1]));
+      const isOutputLayer = index === layerSizes.length - 2;
+
+      this.layers.push(
+        new NeuralLayer(
+          layerSizes[index],
+          layerSizes[index + 1],
+          isOutputLayer
+            ? {
+                [FORWARD_OUTPUT_INDEX]: INITIAL_FORWARD_OUTPUT_BIAS,
+                [REVERSE_OUTPUT_INDEX]: INITIAL_REVERSE_OUTPUT_BIAS,
+              }
+            : {}
+        )
+      );
     }
   }
 
@@ -117,8 +155,10 @@ export class NeuralNetwork {
       activations = this.layers[index].feedForward(activations);
     }
 
+    const outputLayer = this.layers[this.layers.length - 1];
+
     for (let index = 0; index < this.outputs.length; index += 1) {
-      this.outputs[index] = activations[index];
+      this.outputs[index] = outputLayer.outputs[index];
     }
 
     return this.outputs;
