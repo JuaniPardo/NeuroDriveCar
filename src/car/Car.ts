@@ -38,13 +38,19 @@ const ENABLE_COLLISION_DEBUG = true;
 const COLLISION_POINT_RADIUS = 4;
 const SENSOR_FORWARD_OFFSET_RATIO = 0.18;
 const DEFAULT_AI_STEERING_SMOOTHING = 0.18;
-const DEFAULT_AI_STEERING_STRENGTH = 0.58;
+const DEFAULT_AI_STEERING_STRENGTH = 0.52;
 const CURRENT_LANE_BLOCKED_DISTANCE = 160;
 const ADJACENT_LANE_AHEAD_CLEARANCE_DISTANCE = 190;
 const ADJACENT_LANE_REAR_CLEARANCE_DISTANCE = 96;
+const STRONG_STEER_THRESHOLD = 0.3;
+const AI_STEER_DEAD_ZONE = 0.1;
+const AI_RECENTER_SMOOTHING_MULTIPLIER = 1.55;
+const AI_SIGN_CHANGE_SMOOTHING_MULTIPLIER = 1.8;
+const MAX_DYNAMIC_SMOOTHING = 0.34;
 
 export interface LaneAwarenessSnapshot {
   laneCenterOffsetNormalized: number;
+  laneOffsetDelta: number;
   headingErrorNormalized: number;
   currentLaneBlocked: number;
   leftLaneClear: number;
@@ -62,12 +68,26 @@ export interface SteeringDebugSnapshot {
   leftOutput: number;
   rightOutput: number;
   rawSteerIntent: number;
+  steeringIntent: number;
   smoothedSteer: number;
+  previousSteer: number;
+  sustainedSteerTime: number;
+  steeringDirection: -1 | 0 | 1;
+  recoveryTrend: number;
 }
 
 export interface AIControlConfig {
   steeringSmoothing: number;
   steeringStrength: number;
+}
+
+export interface DrivingIntentState {
+  steeringIntent: number;
+  smoothedSteer: number;
+  previousSteer: number;
+  sustainedSteerTime: number;
+  steeringDirection: -1 | 0 | 1;
+  recoveryTrend: number;
 }
 
 export type CarControlMode = 'player' | 'ai' | 'traffic';
@@ -129,11 +149,11 @@ export class Car {
   private readonly appearanceOverrides: Partial<CarAppearance>;
   private readonly aiControl: AIControlConfig;
   private appearance: CarAppearance;
-  private smoothedAiSteerIntent = 0;
   private readonly brainInputs: number[] = [];
   private readonly brainInputLabels: string[] = [];
   private laneAwareness: LaneAwarenessSnapshot = {
     laneCenterOffsetNormalized: 0,
+    laneOffsetDelta: 0,
     headingErrorNormalized: 0,
     currentLaneBlocked: 0,
     leftLaneClear: 0,
@@ -149,6 +169,14 @@ export class Car {
       traffic: 0,
       none: 0,
     },
+  };
+  private drivingIntent: DrivingIntentState = {
+    steeringIntent: 0,
+    smoothedSteer: 0,
+    previousSteer: 0,
+    sustainedSteerTime: 0,
+    steeringDirection: 0,
+    recoveryTrend: 0,
   };
 
   public constructor(
@@ -210,7 +238,7 @@ export class Car {
     this.steeringAngle = 0;
     this.damaged = false;
     this.collisionPoint = null;
-    this.smoothedAiSteerIntent = 0;
+    this.resetDrivingIntent();
     this.controls.clear();
     this.updatePolygon();
     this.updateSensors([], [], null, []);
@@ -221,7 +249,7 @@ export class Car {
     if (this.damaged) {
       this.speed = 0;
       this.steeringAngle = 0;
-      this.smoothedAiSteerIntent = 0;
+      this.resetDrivingIntent();
       this.updatePolygon();
       return;
     }
@@ -452,7 +480,12 @@ export class Car {
 
     return {
       ...outputDebug,
-      smoothedSteer: this.smoothedAiSteerIntent,
+      steeringIntent: this.drivingIntent.steeringIntent,
+      smoothedSteer: this.drivingIntent.smoothedSteer,
+      previousSteer: this.drivingIntent.previousSteer,
+      sustainedSteerTime: this.drivingIntent.sustainedSteerTime,
+      steeringDirection: this.drivingIntent.steeringDirection,
+      recoveryTrend: this.drivingIntent.recoveryTrend,
     };
   }
 
@@ -526,7 +559,7 @@ export class Car {
     this.damaged = true;
     this.speed = 0;
     this.steeringAngle = 0;
-    this.smoothedAiSteerIntent = 0;
+    this.resetDrivingIntent();
     this.collisionPoint = null;
   }
 
@@ -573,7 +606,7 @@ export class Car {
   ): void {
     this.speed = this.trafficSpeed;
     this.steeringAngle = 0;
-    this.smoothedAiSteerIntent = 0;
+    this.resetDrivingIntent();
     this.advanceAlongHeading(this.speed * deltaTimeSeconds);
     this.updatePolygon();
     this.assessDamage(roadBorders);
@@ -591,6 +624,7 @@ export class Car {
     this.damaged = true;
     this.speed = 0;
     this.steeringAngle = 0;
+    this.resetDrivingIntent();
     this.collisionPoint = { x: collision.x, y: collision.y };
   }
 
@@ -692,17 +726,58 @@ export class Car {
       return Number(this.controls.right) - Number(this.controls.left);
     }
 
-    const targetSteerIntent = clamp(this.controls.steerIntent, -1, 1);
-
-    // AI steering is intentionally softened so lane-change attempts can emerge
-    // through small corrections instead of immediate full-lock turns.
-    this.smoothedAiSteerIntent = lerp(
-      this.smoothedAiSteerIntent,
-      targetSteerIntent,
-      this.aiControl.steeringSmoothing
+    const rawSteerIntent = clamp(this.controls.steerIntent, -1, 1);
+    const targetSteerIntent =
+      Math.abs(rawSteerIntent) < AI_STEER_DEAD_ZONE ? 0 : rawSteerIntent;
+    const previousSmoothedSteer = this.drivingIntent.smoothedSteer;
+    const isReturningToNeutral =
+      targetSteerIntent === 0 && Math.abs(previousSmoothedSteer) > 0.001;
+    const isChangingDirection =
+      targetSteerIntent !== 0 &&
+      previousSmoothedSteer !== 0 &&
+      Math.sign(targetSteerIntent) !== Math.sign(previousSmoothedSteer);
+    const smoothingFactor = clamp(
+      this.aiControl.steeringSmoothing *
+        (isChangingDirection
+          ? AI_SIGN_CHANGE_SMOOTHING_MULTIPLIER
+          : isReturningToNeutral
+            ? AI_RECENTER_SMOOTHING_MULTIPLIER
+            : 1),
+      this.aiControl.steeringSmoothing,
+      MAX_DYNAMIC_SMOOTHING
     );
 
-    return this.smoothedAiSteerIntent * this.aiControl.steeringStrength;
+    this.drivingIntent.previousSteer = previousSmoothedSteer;
+    this.drivingIntent.steeringIntent = targetSteerIntent;
+    this.drivingIntent.smoothedSteer = lerp(
+      previousSmoothedSteer,
+      targetSteerIntent,
+      smoothingFactor
+    );
+
+    const steerMagnitude = Math.abs(this.drivingIntent.smoothedSteer);
+    const steerDirection =
+      steerMagnitude < 0.001 ? 0 : (Math.sign(this.drivingIntent.smoothedSteer) as -1 | 0 | 1);
+
+    if (steerMagnitude >= STRONG_STEER_THRESHOLD) {
+      if (
+        this.drivingIntent.steeringDirection !== 0 &&
+        this.drivingIntent.steeringDirection !== steerDirection
+      ) {
+        this.drivingIntent.sustainedSteerTime = 0;
+      } else {
+        this.drivingIntent.sustainedSteerTime += 1 / 60;
+      }
+    } else {
+      this.drivingIntent.sustainedSteerTime = Math.max(
+        0,
+        this.drivingIntent.sustainedSteerTime - 1 / 30
+      );
+    }
+
+    this.drivingIntent.steeringDirection = steerDirection;
+
+    return this.drivingIntent.smoothedSteer * this.aiControl.steeringStrength;
   }
 
   private updateAwarenessSnapshots(
@@ -721,6 +796,7 @@ export class Car {
     if (road === null) {
       this.laneAwareness = {
         laneCenterOffsetNormalized: 0,
+        laneOffsetDelta: 0,
         headingErrorNormalized: 0,
         currentLaneBlocked: 0,
         leftLaneClear: 0,
@@ -730,9 +806,16 @@ export class Car {
     }
 
     const currentLaneIndex = road.getNearestLaneIndex(this.x);
+    const laneCenterOffsetNormalized = road.getNearestLaneCenterOffsetNormalized(this.x);
+    const laneOffsetDelta =
+      laneCenterOffsetNormalized - this.laneAwareness.laneCenterOffsetNormalized;
+    const recoveryTrend =
+      Math.abs(this.laneAwareness.laneCenterOffsetNormalized) -
+      Math.abs(laneCenterOffsetNormalized);
 
     this.laneAwareness = {
-      laneCenterOffsetNormalized: road.getNearestLaneCenterOffsetNormalized(this.x),
+      laneCenterOffsetNormalized,
+      laneOffsetDelta,
       headingErrorNormalized: road.getHeadingErrorNormalized(this.angle, this.x, this.y),
       currentLaneBlocked: this.getLaneBlockSignal(
         road,
@@ -751,6 +834,7 @@ export class Car {
         trafficCars
       ),
     };
+    this.drivingIntent.recoveryTrend = recoveryTrend;
   }
 
   private updateSensorAwareness(road: Road | null): void {
@@ -886,6 +970,15 @@ export class Car {
     }
 
     return 1;
+  }
+
+  private resetDrivingIntent(): void {
+    this.drivingIntent.steeringIntent = 0;
+    this.drivingIntent.smoothedSteer = 0;
+    this.drivingIntent.previousSteer = 0;
+    this.drivingIntent.sustainedSteerTime = 0;
+    this.drivingIntent.steeringDirection = 0;
+    this.drivingIntent.recoveryTrend = 0;
   }
 
   private refreshAppearance(): void {

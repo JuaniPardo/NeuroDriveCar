@@ -20,7 +20,10 @@ import { FONT_MONO, THEME } from '../utils/visualTheme';
 import { NeuralVisualizer } from './NeuralVisualizer';
 
 const PANEL_PADDING = 12;
-const SENSOR_STRIP_HEIGHT = 12;
+const SENSOR_STRIP_HEIGHT = 10;
+const SECTION_GAP = 8;
+const BASE_SECTION_HEIGHT = 54;
+const PANEL_MARGIN = 16;
 
 export interface HudRenderData {
   width: number;
@@ -57,6 +60,9 @@ export interface HudRenderData {
   mutationAmount: number;
   persistenceMessage: string;
   showHelp: boolean;
+  showAdvancedDiagnostics: boolean;
+  showNeuralVisualizer: boolean;
+  showControlsPanel: boolean;
 }
 
 interface HudRow {
@@ -73,21 +79,45 @@ export class Hud {
   }
 
   public render(ctx: CanvasRenderingContext2D, data: HudRenderData): void {
-    const margin = 16;
-    const mainPanelWidth = Math.min(378, Math.max(336, data.width * 0.29));
-    const mainPanelHeight = data.showHelp ? 650 : 566;
-    const neuralPanelWidth = Math.min(420, Math.max(320, data.width * 0.22));
-    const neuralPanelHeight = Math.min(360, Math.max(300, data.height * 0.34));
+    const mainPanelWidth = Math.min(350, Math.max(300, data.width * 0.26));
+    const mainPanelHeight = this.getMainPanelHeight(data);
 
-    this.renderMainPanel(ctx, margin, margin, mainPanelWidth, mainPanelHeight, data);
-    this.neuralVisualizer.render(
+    this.renderMainPanel(
       ctx,
-      data.width - neuralPanelWidth - margin,
-      margin,
-      neuralPanelWidth,
-      neuralPanelHeight,
-      data.brainSnapshot
+      PANEL_MARGIN,
+      PANEL_MARGIN,
+      mainPanelWidth,
+      mainPanelHeight,
+      data
     );
+
+    if (data.showNeuralVisualizer) {
+      const neuralPanelWidth = Math.min(400, Math.max(300, data.width * 0.22));
+      const neuralPanelHeight = Math.min(360, Math.max(292, data.height * 0.34));
+
+      this.neuralVisualizer.render(
+        ctx,
+        data.width - neuralPanelWidth - PANEL_MARGIN,
+        PANEL_MARGIN,
+        neuralPanelWidth,
+        neuralPanelHeight,
+        data.brainSnapshot
+      );
+    }
+  }
+
+  private getMainPanelHeight(data: HudRenderData): number {
+    const sectionCount = data.showAdvancedDiagnostics ? 6 : 5;
+    const footerHeight = data.showHelp ? 92 : 42;
+    const headerHeight = 48;
+    const baseHeight =
+      PANEL_PADDING * 2 +
+      headerHeight +
+      footerHeight +
+      sectionCount * BASE_SECTION_HEIGHT +
+      (sectionCount - 1) * SECTION_GAP;
+
+    return Math.min(data.height - PANEL_MARGIN * 2, baseHeight);
   }
 
   private renderMainPanel(
@@ -98,12 +128,9 @@ export class Hud {
     height: number,
     data: HudRenderData
   ): void {
-    const headerHeight = 52;
-    const sectionGap = 8;
-    const sectionHeight = 66;
-    const footerHeight = data.showHelp ? 126 : 44;
     const contentX = x + PANEL_PADDING;
     const contentWidth = width - PANEL_PADDING * 2;
+    const footerHeight = data.showHelp ? 92 : 42;
     const footerY = y + height - footerHeight - PANEL_PADDING;
 
     ctx.save();
@@ -115,179 +142,94 @@ export class Hud {
 
     this.renderHeader(ctx, contentX, y + PANEL_PADDING, contentWidth, data);
 
-    let cursorY = y + PANEL_PADDING + headerHeight;
+    let cursorY = y + PANEL_PADDING + 48;
 
-    this.renderSectionBox(
+    cursorY = this.renderSectionBox(
       ctx,
       contentX,
       cursorY,
       contentWidth,
-      sectionHeight,
-      'SELECTED CAR',
+      'SELECTED',
       [
-        {
-          label: 'STATE',
-          value: data.damaged ? 'DAMAGED' : 'ACTIVE',
-          valueColor: data.damaged ? THEME.hud.alertColor : THEME.hud.okColor,
-        },
-        {
-          label: 'MODE',
-          value: data.controlMode.toUpperCase(),
-          valueColor:
-            data.controlMode === 'ai' ? THEME.hud.aiColor : THEME.hud.valueColor,
-        },
-        {
-          label: 'SPEED',
-          value: `${Math.abs(data.speed).toFixed(1)} ${getVelocityDirectionLabel(data.speed)}`,
-        },
-        {
-          label: 'PROGRESS',
-          value: data.traveledDistance.toFixed(1),
-        },
+        row('STATE', data.damaged ? 'DMGD' : 'LIVE', data.damaged ? THEME.hud.alertColor : THEME.hud.okColor),
+        row('SPD', formatSignedValue(data.speed, 1)),
+        row('PROG', formatValue(data.traveledDistance, 0)),
+        row('FIT', formatValue(data.fitness.totalFitness, 0), THEME.hud.aiColor),
       ]
     );
-    cursorY += sectionHeight + sectionGap;
 
-    this.renderSectionBox(
+    cursorY = this.renderSectionBox(
       ctx,
       contentX,
       cursorY,
       contentWidth,
-      sectionHeight,
-      'STEERING',
+      'STEER',
       [
-        {
-          label: 'LEFT OUTPUT',
-          value: data.steeringDebug.leftOutput.toFixed(2),
-        },
-        {
-          label: 'RIGHT OUTPUT',
-          value: data.steeringDebug.rightOutput.toFixed(2),
-        },
-        {
-          label: 'RAW INTENT',
-          value: data.steeringDebug.rawSteerIntent.toFixed(2),
-        },
-        {
-          label: 'SMOOTHED',
-          value: data.steeringDebug.smoothedSteer.toFixed(2),
-          valueColor: THEME.hud.aiColor,
-        },
+        row('RAW', formatSignedValue(data.steeringDebug.rawSteerIntent, 2)),
+        row('SMTH', formatSignedValue(data.steeringDebug.smoothedSteer, 2), THEME.hud.aiColor),
+        row('DIR', String(data.steeringDebug.steeringDirection)),
+        row('HOLD', formatValue(data.steeringDebug.sustainedSteerTime, 2)),
       ]
     );
-    cursorY += sectionHeight + sectionGap;
 
-    this.renderSectionBox(
+    cursorY = this.renderSectionBox(
       ctx,
       contentX,
       cursorY,
       contentWidth,
-      sectionHeight,
-      'LANE AWARENESS',
+      'LANE',
       [
-        {
-          label: 'CENTER OFFSET',
-          value: data.laneAwareness.laneCenterOffsetNormalized.toFixed(2),
-        },
-        {
-          label: 'HEADING ERR',
-          value: data.laneAwareness.headingErrorNormalized.toFixed(2),
-        },
-        {
-          label: 'LANE BLOCKED',
-          value: data.laneAwareness.currentLaneBlocked.toFixed(2),
-        },
-        {
-          label: 'L / R CLEAR',
-          value: `${data.laneAwareness.leftLaneClear.toFixed(0)} / ${data.laneAwareness.rightLaneClear.toFixed(0)}`,
-        },
+        row('OFF', formatSignedValue(data.laneAwareness.laneCenterOffsetNormalized, 2)),
+        row('HEAD', formatSignedValue(data.laneAwareness.headingErrorNormalized, 2)),
+        row('DLTA', formatSignedValue(data.laneAwareness.laneOffsetDelta, 2)),
+        row('RCVR', formatSignedValue(data.steeringDebug.recoveryTrend, 2)),
       ]
     );
-    cursorY += sectionHeight + sectionGap;
 
-    this.renderSectionBox(
+    cursorY = this.renderSectionBox(
       ctx,
       contentX,
       cursorY,
       contentWidth,
-      sectionHeight,
-      'SENSOR AWARENESS',
+      'RISK',
       [
-        {
-          label: 'FRONT TRAFFIC',
-          value:
-            data.sensorAwareness.frontObstacleDistance === null
-              ? '--'
-              : data.sensorAwareness.frontObstacleDistance.toFixed(1),
-        },
-        {
-          label: 'EDGE PROX',
-          value: data.sensorAwareness.edgeProximity.toFixed(2),
-        },
-        {
-          label: 'HITS',
-          value: formatHitSummary(data.sensorAwareness),
-        },
+        row('FRONT', data.sensorAwareness.frontObstacleDistance === null ? '--' : formatValue(data.sensorAwareness.frontObstacleDistance, 0)),
+        row('EDGE', formatValue(data.sensorAwareness.edgeProximity, 2)),
+        row('BLKD', formatValue(data.laneAwareness.currentLaneBlocked, 0)),
+        row('CLR', `${formatValue(data.laneAwareness.leftLaneClear, 0)}/${formatValue(data.laneAwareness.rightLaneClear, 0)}`),
       ],
       data.sensorReadings
     );
-    cursorY += sectionHeight + sectionGap;
 
-    this.renderSectionBox(
+    cursorY = this.renderSectionBox(
       ctx,
       contentX,
       cursorY,
       contentWidth,
-      sectionHeight,
-      'FITNESS',
+      'RUN',
       [
-        {
-          label: 'TOTAL',
-          value: data.fitness.totalFitness.toFixed(1),
-          valueColor: THEME.hud.aiColor,
-        },
-        {
-          label: 'PROG / SURV',
-          value: `${data.fitness.progressReward.toFixed(1)} / ${data.fitness.survivalReward.toFixed(1)}`,
-        },
-        {
-          label: 'REC / EDGE',
-          value: `${data.fitness.laneRecoveryReward.toFixed(1)} / ${data.fitness.edgePenalty.toFixed(1)}`,
-        },
-        {
-          label: 'STEER / OBS',
-          value: `${data.fitness.steeringPenalty.toFixed(1)} / ${data.fitness.obstaclePenalty.toFixed(1)}`,
-        },
+        row('BEST', `${data.bestCarIndex + 1}/${data.generation}`),
+        row('ALIVE', `${data.aliveCount}/${data.populationSize}`),
+        row('SIM', data.paused ? 'PAUSE' : formatSimulationSpeedLabel(data.simulationSpeed)),
+        row('CRASH', String(data.crashedCount)),
       ]
     );
-    cursorY += sectionHeight + sectionGap;
 
-    this.renderSectionBox(
-      ctx,
-      contentX,
-      cursorY,
-      contentWidth,
-      sectionHeight,
-      'RUN STATUS',
-      [
-        {
-          label: 'BEST / GEN',
-          value: `${data.bestCarIndex + 1} / ${data.generation}`,
-        },
-        {
-          label: 'ALIVE / POP',
-          value: `${data.aliveCount} / ${data.populationSize}`,
-        },
-        {
-          label: 'SIM / NEXT',
-          value: `${formatSimulationSpeedLabel(data.simulationSpeed)} / ${data.selectedPopulationSize}`,
-        },
-        {
-          label: 'TRAFFIC',
-          value: `${data.activeTrafficSettings.phase} / ${data.trafficCount}`,
-        },
-      ]
-    );
+    if (data.showAdvancedDiagnostics) {
+      this.renderSectionBox(
+        ctx,
+        contentX,
+        cursorY,
+        contentWidth,
+        'ADVANCED',
+        [
+          row('P/S', `${formatValue(data.fitness.progressReward, 0)}/${formatValue(data.fitness.survivalReward, 0)}`),
+          row('REC', formatValue(data.fitness.laneRecoveryReward, 1)),
+          row('EDGE', formatValue(data.fitness.edgePenalty, 1)),
+          row('STR', `${formatValue(data.fitness.steeringPenalty, 1)}/${formatValue(data.fitness.stagnationPenalty, 1)}`),
+        ]
+      );
+    }
 
     this.renderFooter(ctx, contentX, footerY, contentWidth, footerHeight, data);
     ctx.restore();
@@ -303,27 +245,32 @@ export class Hud {
     ctx.fillStyle = THEME.hud.textColor;
     ctx.font = `9px ${FONT_MONO}`;
     ctx.textBaseline = 'top';
-    ctx.fillText('SELECTED CAR DIAGNOSTICS', x, y);
+    ctx.fillText('SELECTED CAR', x, y);
 
-    ctx.fillStyle = THEME.hud.mutedTextColor;
-    ctx.font = `8px ${FONT_MONO}`;
-    ctx.fillText('What does the AI think is happening right now?', x, y + 16);
-
-    this.renderKeyValueRow(ctx, x, x + width, y + 32, 'FPS', data.framesPerSecond.toFixed(1));
+    this.renderKeyValueRow(ctx, x, x + width * 0.45, y + 18, 'FPS', formatValue(data.framesPerSecond, 1));
     this.renderKeyValueRow(
       ctx,
-      x + width * 0.42,
+      x + width * 0.48,
       x + width,
-      y + 32,
-      'SIM',
-      data.paused ? 'PAUSED' : formatSimulationSpeedLabel(data.simulationSpeed),
-      data.paused ? THEME.hud.alertColor : THEME.hud.okColor
+      y + 18,
+      'MODE',
+      data.controlMode.toUpperCase(),
+      data.controlMode === 'ai' ? THEME.hud.aiColor : THEME.hud.valueColor
+    );
+    this.renderKeyValueRow(
+      ctx,
+      x,
+      x + width,
+      y + 30,
+      'VIEW',
+      `${data.showNeuralVisualizer ? 'VIZ' : 'NO VIZ'} / ${data.showControlsPanel ? 'CTRL' : 'NO CTRL'} / ${data.showAdvancedDiagnostics ? 'ADV' : 'BASIC'}`,
+      THEME.hud.mutedTextColor
     );
 
     ctx.strokeStyle = THEME.hud.panelDivider;
     ctx.beginPath();
-    ctx.moveTo(x, y + 46.5);
-    ctx.lineTo(x + width, y + 46.5);
+    ctx.moveTo(x, y + 42.5);
+    ctx.lineTo(x + width, y + 42.5);
     ctx.stroke();
   }
 
@@ -332,11 +279,14 @@ export class Hud {
     x: number,
     y: number,
     width: number,
-    height: number,
     label: string,
     rows: readonly HudRow[],
     sensorReadings?: readonly number[]
-  ): void {
+  ): number {
+    const rowHeight = 11;
+    const sensorHeight = sensorReadings === undefined ? 0 : 14;
+    const height = 20 + sensorHeight + rows.length * rowHeight + 6;
+
     ctx.fillStyle = THEME.hud.panelBackgroundStrong;
     ctx.strokeStyle = THEME.hud.panelBorder;
     ctx.lineWidth = 1;
@@ -346,19 +296,29 @@ export class Hud {
     ctx.fillStyle = THEME.hud.sectionLabelColor;
     ctx.font = `7px ${FONT_MONO}`;
     ctx.textBaseline = 'top';
-    ctx.fillText(label, x + 10, y + 8);
+    ctx.fillText(label, x + 10, y + 7);
 
-    let cursorY = y + 22;
+    let cursorY = y + 19;
 
     if (sensorReadings !== undefined) {
       this.renderSensorStrip(ctx, x + 10, cursorY, width - 20, sensorReadings);
       cursorY += 16;
     }
 
-    for (const row of rows) {
-      this.renderKeyValueRow(ctx, x + 10, x + width - 10, cursorY, row.label, row.value, row.valueColor);
-      cursorY += 12;
+    for (const currentRow of rows) {
+      this.renderKeyValueRow(
+        ctx,
+        x + 10,
+        x + width - 10,
+        cursorY,
+        currentRow.label,
+        currentRow.value,
+        currentRow.valueColor
+      );
+      cursorY += rowHeight;
     }
+
+    return y + height + SECTION_GAP;
   }
 
   private renderFooter(
@@ -378,38 +338,32 @@ export class Hud {
     ctx.fillStyle = THEME.hud.sectionLabelColor;
     ctx.font = `7px ${FONT_MONO}`;
     ctx.textBaseline = 'top';
-    ctx.fillText(data.showHelp ? 'HELP / SYSTEM' : 'SYSTEM', x + 10, y + 8);
+    ctx.fillText(data.showHelp ? 'HELP' : 'STATUS', x + 10, y + 7);
 
     ctx.font = `8px ${FONT_MONO}`;
     ctx.fillStyle = THEME.hud.mutedTextColor;
-    ctx.fillText(`IO: ${truncateStatusMessage(data.persistenceMessage, 56)}`, x + 10, y + 22);
-    ctx.fillText(`CTRL: ${truncateStatusMessage(data.lastControlAction, 54)}`, x + 10, y + 34);
+    ctx.fillText(`IO ${truncateStatusMessage(data.persistenceMessage, 40)}`, x + 10, y + 19);
+    ctx.fillText(`MSG ${truncateStatusMessage(data.lastControlAction, 38)}`, x + 10, y + 31);
 
     if (!data.showHelp) {
-      ctx.fillText('H help   P pause   R restart   S/L/D brain io', x + 10, y + 46);
+      ctx.fillText('H help  D adv  V viz  C ctrl', x + 10, y + 43);
       return;
     }
 
     ctx.fillText(
-      `SAVE: ${formatSavedBrainStatus(data.savedBrainExists, data.savedBrainCompatible, data.savedBestDistance)}`,
+      `SAVE ${formatSavedBrainStatus(data.savedBrainExists, data.savedBrainCompatible, data.savedBestDistance)}`,
       x + 10,
-      y + 48
+      y + 43
     );
     ctx.fillText(
-      `TRAFFIC: ${data.activeTrafficSettings.phase} active / ${formatTrafficSettingsLabel(data.selectedTrafficSettings)} next`,
+      `TRAF ${truncateStatusMessage(formatTrafficSettingsLabel(data.selectedTrafficSettings), 28)}  SRC ${data.populationSource.toUpperCase()}`,
       x + 10,
-      y + 62
-    );
-    ctx.fillText(`LANES: ${data.laneSpeedLabel}`, x + 10, y + 76);
-    ctx.fillText(
-      `SRC: ${data.populationSource.toUpperCase()}   MUT: ${data.mutationAmount.toFixed(2)} / ${data.selectedMutationRate.toFixed(2)}`,
-      x + 10,
-      y + 90
+      y + 55
     );
     ctx.fillText(
-      'Keys: H help, P pause, R restart, 1-4 speed, [ ] pop, - = mut, S/L/D brain',
+      `MUT ${formatValue(data.mutationAmount, 2)} / ${formatValue(data.selectedMutationRate, 2)}  LANE ${truncateStatusMessage(data.laneSpeedLabel, 18)}`,
       x + 10,
-      y + 104
+      y + 67
     );
   }
 
@@ -425,10 +379,11 @@ export class Hud {
     ctx.font = `8px ${FONT_MONO}`;
     ctx.textAlign = 'left';
     ctx.fillStyle = THEME.hud.mutedTextColor;
-    ctx.fillText(label, labelX, y);
+    ctx.fillText(truncateStatusMessage(label, 8), labelX, y);
+
     ctx.textAlign = 'right';
     ctx.fillStyle = valueColor;
-    ctx.fillText(value, valueX, y);
+    ctx.fillText(truncateStatusMessage(value, 18), valueX, y);
     ctx.textAlign = 'left';
   }
 
@@ -440,7 +395,7 @@ export class Hud {
     sensorReadings: readonly number[]
   ): void {
     const slotCount = Math.max(1, sensorReadings.length);
-    const gap = 3;
+    const gap = 2;
     const slotWidth = (width - gap * (slotCount - 1)) / slotCount;
 
     for (let index = 0; index < slotCount; index += 1) {
@@ -458,18 +413,22 @@ export class Hud {
   }
 }
 
-function getVelocityDirectionLabel(speed: number): string {
-  if (Math.abs(speed) < 0.001) {
-    return 'STOP';
-  }
-
-  return speed > 0 ? 'FWD' : 'REV';
+function row(label: string, value: string, valueColor?: string): HudRow {
+  return { label, value, valueColor };
 }
 
-function formatHitSummary(sensorAwareness: SensorAwarenessSnapshot): string {
-  const { border, lane, traffic } = sensorAwareness.hitSummary;
+function formatValue(value: number, decimals: number): string {
+  return Number.isFinite(value) ? value.toFixed(decimals) : '--';
+}
 
-  return `B:${border} L:${lane} T:${traffic}`;
+function formatSignedValue(value: number, decimals: number): string {
+  if (!Number.isFinite(value)) {
+    return '--';
+  }
+
+  const fixedValue = value.toFixed(decimals);
+
+  return value > 0 ? `+${fixedValue}` : fixedValue;
 }
 
 function formatSavedBrainStatus(
@@ -481,9 +440,9 @@ function formatSavedBrainStatus(
     return 'NONE';
   }
 
-  const distanceLabel = bestDistance === null ? '--' : bestDistance.toFixed(1);
+  const distanceLabel = bestDistance === null ? '--' : bestDistance.toFixed(0);
 
-  return `${compatible ? 'READY' : 'INCOMP'} @ ${distanceLabel}`;
+  return `${compatible ? 'READY' : 'INCOMP'} ${distanceLabel}`;
 }
 
 function truncateStatusMessage(value: string, maxLength: number): string {

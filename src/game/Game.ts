@@ -54,6 +54,9 @@ const POPULATION_INCREASE_KEY = ']';
 const MUTATION_DECREASE_KEY = '-';
 const MUTATION_INCREASE_KEY = '=';
 const TOGGLE_HELP_KEY = 'h';
+const TOGGLE_NEURAL_VISUALIZER_KEY = 'v';
+const TOGGLE_CONTROLS_KEY = 'c';
+const TOGGLE_ADVANCED_DIAGNOSTICS_KEY = 'd';
 const DEFAULT_RUNNING_SPEED: RunningSimulationSpeed = 1;
 const DEFAULT_POPULATION_SIZE: PopulationSizeOption = 25;
 const DEFAULT_MUTATION_RATE: MutationRateOption = 0.2;
@@ -100,6 +103,9 @@ export class Game implements Updatable, Renderable {
     lastActionMessage: 'Simulation ready.',
   };
   private showHudHelp = false;
+  private showNeuralVisualizer = true;
+  private showControlsPanel = false;
+  private showAdvancedDiagnostics = false;
 
   public constructor(container: HTMLElement) {
     this.container = container;
@@ -169,6 +175,7 @@ export class Game implements Updatable, Renderable {
 
     this.container.append(this.canvas);
     this.context.imageSmoothingEnabled = false;
+    this.controlsPanel.setVisible(this.showControlsPanel);
 
     this.resize();
     this.synchronizeSimulationWorld();
@@ -256,6 +263,9 @@ export class Game implements Updatable, Renderable {
       mutationAmount: populationStats.mutationAmount,
       persistenceMessage: this.persistenceMessage,
       showHelp: this.showHudHelp,
+      showAdvancedDiagnostics: this.showAdvancedDiagnostics,
+      showNeuralVisualizer: this.showNeuralVisualizer,
+      showControlsPanel: this.showControlsPanel,
     });
     this.controlsPanel.render({
       ...this.getControlSnapshot(),
@@ -332,6 +342,34 @@ export class Game implements Updatable, Renderable {
       this.controlState.lastActionMessage = this.showHudHelp
         ? 'HUD help expanded.'
         : 'HUD help collapsed.';
+      return;
+    }
+
+    if (key === TOGGLE_NEURAL_VISUALIZER_KEY) {
+      event.preventDefault();
+      this.showNeuralVisualizer = !this.showNeuralVisualizer;
+      this.controlState.lastActionMessage = this.showNeuralVisualizer
+        ? 'Neural visualizer shown.'
+        : 'Neural visualizer hidden.';
+      return;
+    }
+
+    if (key === TOGGLE_CONTROLS_KEY) {
+      event.preventDefault();
+      this.showControlsPanel = !this.showControlsPanel;
+      this.controlsPanel.setVisible(this.showControlsPanel);
+      this.controlState.lastActionMessage = this.showControlsPanel
+        ? 'Controls panel shown.'
+        : 'Controls panel hidden.';
+      return;
+    }
+
+    if (key === TOGGLE_ADVANCED_DIAGNOSTICS_KEY) {
+      event.preventDefault();
+      this.showAdvancedDiagnostics = !this.showAdvancedDiagnostics;
+      this.controlState.lastActionMessage = this.showAdvancedDiagnostics
+        ? 'Advanced diagnostics shown.'
+        : 'Advanced diagnostics hidden.';
       return;
     }
 

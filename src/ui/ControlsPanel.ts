@@ -222,6 +222,11 @@ export class ControlsPanel {
     this.root.remove();
   }
 
+  public setVisible(visible: boolean): void {
+    this.root.classList.toggle('controls-panel--hidden', !visible);
+    this.root.setAttribute('aria-hidden', visible ? 'false' : 'true');
+  }
+
   public render(snapshot: ControlsPanelSnapshot): void {
     this.pauseButton.textContent = snapshot.paused ? 'Resume' : 'Pause';
     this.restartButton.disabled = false;
