@@ -8,6 +8,7 @@ import {
 import { Brain, BRAIN_OUTPUT_LABELS } from '../ai/Brain';
 import type { BrainSnapshot } from '../ai/Brain';
 import { Sensor, type SensorConfig } from '../sensors/Sensor';
+import { clamp, lerp } from '../utils/math';
 import { THEME } from '../utils/visualTheme';
 import { Controls } from './Controls';
 import {
@@ -24,6 +25,13 @@ const ENABLE_DEBUG_VECTORS = true;
 const ENABLE_COLLISION_DEBUG = true;
 const COLLISION_POINT_RADIUS = 4;
 const SENSOR_FORWARD_OFFSET_RATIO = 0.18;
+const DEFAULT_AI_STEERING_SMOOTHING = 0.12;
+const DEFAULT_AI_STEERING_STRENGTH = 0.55;
+
+export interface AIControlConfig {
+  steeringSmoothing: number;
+  steeringStrength: number;
+}
 
 export type CarControlMode = 'player' | 'ai' | 'traffic';
 
@@ -46,6 +54,7 @@ export interface CarOptions {
   trafficSpeed?: number;
   appearance?: Partial<CarAppearance>;
   sensor?: Partial<SensorConfig> | false;
+  aiControl?: Partial<AIControlConfig>;
 }
 
 export interface CarRenderOptions {
@@ -55,6 +64,11 @@ export interface CarRenderOptions {
 
 const DEFAULT_CAR_APPEARANCE: CarAppearance = {
   ...THEME.car.player,
+};
+
+const DEFAULT_AI_CONTROL_CONFIG: AIControlConfig = {
+  steeringSmoothing: DEFAULT_AI_STEERING_SMOOTHING,
+  steeringStrength: DEFAULT_AI_STEERING_STRENGTH,
 };
 
 export class Car {
@@ -76,7 +90,9 @@ export class Car {
   private controlMode: CarControlMode;
   private readonly trafficSpeed: number;
   private readonly appearanceOverrides: Partial<CarAppearance>;
+  private readonly aiControl: AIControlConfig;
   private appearance: CarAppearance;
+  private smoothedAiSteerIntent = 0;
 
   public constructor(
     x: number,
@@ -94,6 +110,10 @@ export class Car {
     this.controlMode = options.controlMode ?? 'player';
     this.trafficSpeed = options.trafficSpeed ?? 0;
     this.appearanceOverrides = options.appearance ?? {};
+    this.aiControl = {
+      ...DEFAULT_AI_CONTROL_CONFIG,
+      ...options.aiControl,
+    };
     this.appearance = this.getAppearanceForMode(this.controlMode);
     this.controls = new Controls();
     this.polygon = createCarPolygon();
@@ -126,6 +146,7 @@ export class Car {
     this.steeringAngle = 0;
     this.damaged = false;
     this.collisionPoint = null;
+    this.smoothedAiSteerIntent = 0;
     this.controls.clear();
     this.updatePolygon();
     this.updateSensors([], []);
@@ -136,6 +157,7 @@ export class Car {
     if (this.damaged) {
       this.speed = 0;
       this.steeringAngle = 0;
+      this.smoothedAiSteerIntent = 0;
       this.updatePolygon();
       return;
     }
@@ -155,8 +177,7 @@ export class Car {
       this.physics
     );
 
-    const steeringInput =
-      Number(this.controls.right) - Number(this.controls.left);
+    const steeringInput = this.getSteeringInput();
     this.steeringAngle = updateSteeringAngle(
       this.steeringAngle,
       steeringInput,
@@ -379,6 +400,31 @@ export class Car {
     return this.sensor?.getHitCount() ?? 0;
   }
 
+  public getDistanceToNearestRoadBorder(
+    roadBorders: readonly Segment[]
+  ): number {
+    let nearestDistance = Number.POSITIVE_INFINITY;
+
+    for (let pointIndex = 0; pointIndex < this.polygon.length; pointIndex += 1) {
+      const point = this.polygon[pointIndex];
+
+      for (let borderIndex = 0; borderIndex < roadBorders.length; borderIndex += 1) {
+        const border = roadBorders[borderIndex];
+        const distance = getDistancePointToSegment(point, border);
+
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+        }
+      }
+    }
+
+    return nearestDistance;
+  }
+
+  public getForwardSpeedRatio(): number {
+    return clamp(this.speed / this.physics.maxForwardSpeed, 0, 1);
+  }
+
   public getCollisionWith(otherPolygon: readonly Point[]): Intersection | null {
     return getPolygonIntersection(this.polygon, otherPolygon);
   }
@@ -391,6 +437,7 @@ export class Car {
     this.damaged = true;
     this.speed = 0;
     this.steeringAngle = 0;
+    this.smoothedAiSteerIntent = 0;
     this.collisionPoint = null;
   }
 
@@ -437,6 +484,7 @@ export class Car {
   ): void {
     this.speed = this.trafficSpeed;
     this.steeringAngle = 0;
+    this.smoothedAiSteerIntent = 0;
     this.advanceAlongHeading(this.speed * deltaTimeSeconds);
     this.updatePolygon();
     this.assessDamage(roadBorders);
@@ -550,6 +598,24 @@ export class Car {
     this.controls.applyState(this.brain.decide(this.sensor.normalizedReadings));
   }
 
+  private getSteeringInput(): number {
+    if (this.controlMode !== 'ai') {
+      return Number(this.controls.right) - Number(this.controls.left);
+    }
+
+    const targetSteerIntent = clamp(this.controls.steerIntent, -1, 1);
+
+    // AI steering is intentionally softened so lane-change attempts can emerge
+    // through small corrections instead of immediate full-lock turns.
+    this.smoothedAiSteerIntent = lerp(
+      this.smoothedAiSteerIntent,
+      targetSteerIntent,
+      this.aiControl.steeringSmoothing
+    );
+
+    return this.smoothedAiSteerIntent * this.aiControl.steeringStrength;
+  }
+
   private refreshAppearance(): void {
     this.appearance = this.getAppearanceForMode(this.controlMode);
   }
@@ -574,6 +640,26 @@ export class Car {
       ...this.appearanceOverrides,
     };
   }
+}
+
+function getDistancePointToSegment(point: Point, segment: Segment): number {
+  const deltaX = segment.end.x - segment.start.x;
+  const deltaY = segment.end.y - segment.start.y;
+  const segmentLengthSquared = deltaX * deltaX + deltaY * deltaY;
+
+  if (segmentLengthSquared <= Number.EPSILON) {
+    return Math.hypot(point.x - segment.start.x, point.y - segment.start.y);
+  }
+
+  const projection =
+    ((point.x - segment.start.x) * deltaX +
+      (point.y - segment.start.y) * deltaY) /
+    segmentLengthSquared;
+  const offset = clamp(projection, 0, 1);
+  const nearestX = segment.start.x + deltaX * offset;
+  const nearestY = segment.start.y + deltaY * offset;
+
+  return Math.hypot(point.x - nearestX, point.y - nearestY);
 }
 
 function createCarPolygon(): Point[] {

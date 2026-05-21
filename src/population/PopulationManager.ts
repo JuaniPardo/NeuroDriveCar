@@ -25,6 +25,13 @@ const FITNESS_EARLY_CRASH_PENALTY = 120;
 const FITNESS_LATERAL_OFFSET_PENALTY = 0.12;
 const FITNESS_STEERING_PENALTY = 18;
 const FITNESS_STAGNATION_PENALTY = 48;
+const FITNESS_FORWARD_SPEED_BONUS = 44;
+const FITNESS_EDGE_PROXIMITY_PENALTY = 76;
+const FITNESS_FRONT_OBSTACLE_PENALTY = 58;
+const FITNESS_SAFE_AVOIDANCE_REWARD = 90;
+const EDGE_DANGER_DISTANCE = 52;
+const FRONT_OBSTACLE_SIGNAL_THRESHOLD = 0.55;
+const FRONT_OBSTACLE_CLEAR_REWARD_DELTA = 0.16;
 
 export type PopulationSource = 'random' | 'saved';
 
@@ -66,6 +73,11 @@ export class PopulationManager {
   private readonly steeringEffortByCar: number[] = [];
   private readonly lowSpeedTimeByCar: number[] = [];
   private readonly fitnessByCar: number[] = [];
+  private readonly forwardSpeedByCar: number[] = [];
+  private readonly edgeExposureByCar: number[] = [];
+  private readonly frontObstaclePenaltyByCar: number[] = [];
+  private readonly obstacleAvoidanceRewardByCar: number[] = [];
+  private readonly previousFrontObstacleSignalByCar: number[] = [];
   private readonly stats: PopulationStats;
   private generation = 1;
   private seedGenome: BrainGenome | null = null;
@@ -147,6 +159,11 @@ export class PopulationManager {
       this.steeringEffortByCar.push(0);
       this.lowSpeedTimeByCar.push(0);
       this.fitnessByCar.push(0);
+      this.forwardSpeedByCar.push(0);
+      this.edgeExposureByCar.push(0);
+      this.frontObstaclePenaltyByCar.push(0);
+      this.obstacleAvoidanceRewardByCar.push(0);
+      this.previousFrontObstacleSignalByCar.push(0);
     }
 
     this.stats.generation = this.generation;
@@ -214,6 +231,44 @@ export class PopulationManager {
   ): void {
     for (let index = 0; index < this.cars.length; index += 1) {
       this.cars[index].updateSensors(roadBorders, trafficPolygons);
+    }
+  }
+
+  public updateTrainingSignals(
+    deltaTimeSeconds: number,
+    roadBorders: readonly Segment[]
+  ): void {
+    for (let index = 0; index < this.cars.length; index += 1) {
+      const car = this.cars[index];
+
+      this.forwardSpeedByCar[index] +=
+        car.getForwardSpeedRatio() * deltaTimeSeconds;
+
+      const edgeDanger = this.getEdgeDangerSignal(car, roadBorders);
+      this.edgeExposureByCar[index] += edgeDanger * deltaTimeSeconds;
+
+      const frontObstacleSignal = getFrontObstacleSignal(car.getSensorReadings());
+
+      if (frontObstacleSignal > FRONT_OBSTACLE_SIGNAL_THRESHOLD) {
+        this.frontObstaclePenaltyByCar[index] +=
+          frontObstacleSignal * deltaTimeSeconds;
+      }
+
+      if (
+        !car.damaged &&
+        this.previousFrontObstacleSignalByCar[index] >
+          FRONT_OBSTACLE_SIGNAL_THRESHOLD &&
+        frontObstacleSignal <
+          this.previousFrontObstacleSignalByCar[index] -
+            FRONT_OBSTACLE_CLEAR_REWARD_DELTA &&
+        this.progressByCar[index] > 0 &&
+        car.getForwardSpeedRatio() > 0.22
+      ) {
+        this.obstacleAvoidanceRewardByCar[index] +=
+          this.previousFrontObstacleSignalByCar[index] - frontObstacleSignal;
+      }
+
+      this.previousFrontObstacleSignalByCar[index] = frontObstacleSignal;
     }
   }
 
@@ -420,14 +475,26 @@ export class PopulationManager {
       this.steeringEffortByCar[index] * FITNESS_STEERING_PENALTY;
     const stagnationPenalty =
       this.lowSpeedTimeByCar[index] * FITNESS_STAGNATION_PENALTY;
+    const forwardSpeedBonus =
+      this.forwardSpeedByCar[index] * FITNESS_FORWARD_SPEED_BONUS;
+    const edgePenalty =
+      this.edgeExposureByCar[index] * FITNESS_EDGE_PROXIMITY_PENALTY;
+    const frontObstaclePenalty =
+      this.frontObstaclePenaltyByCar[index] * FITNESS_FRONT_OBSTACLE_PENALTY;
+    const obstacleAvoidanceReward =
+      this.obstacleAvoidanceRewardByCar[index] * FITNESS_SAFE_AVOIDANCE_REWARD;
 
     return (
       progress +
       survivalBonus -
+      edgePenalty -
       earlyCrashPenalty -
+      frontObstaclePenalty -
       lateralOffsetPenalty -
       steeringPenalty -
-      stagnationPenalty
+      stagnationPenalty +
+      forwardSpeedBonus +
+      obstacleAvoidanceReward
     );
   }
 
@@ -459,9 +526,43 @@ export class PopulationManager {
     this.steeringEffortByCar.length = 0;
     this.lowSpeedTimeByCar.length = 0;
     this.fitnessByCar.length = 0;
+    this.forwardSpeedByCar.length = 0;
+    this.edgeExposureByCar.length = 0;
+    this.frontObstaclePenaltyByCar.length = 0;
+    this.obstacleAvoidanceRewardByCar.length = 0;
+    this.previousFrontObstacleSignalByCar.length = 0;
+  }
+
+  private getEdgeDangerSignal(
+    car: Car,
+    roadBorders: readonly Segment[]
+  ): number {
+    const nearestBorderDistance = car.getDistanceToNearestRoadBorder(roadBorders);
+
+    if (!Number.isFinite(nearestBorderDistance)) {
+      return 0;
+    }
+
+    return Math.max(0, 1 - nearestBorderDistance / EDGE_DANGER_DISTANCE);
   }
 }
 
 function clampMutationAmount(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function getFrontObstacleSignal(sensorReadings: readonly number[]): number {
+  if (sensorReadings.length === 0) {
+    return 0;
+  }
+
+  const centerIndex = Math.floor(sensorReadings.length * 0.5);
+  const leftIndex = Math.max(0, centerIndex - 1);
+  const rightIndex = Math.min(sensorReadings.length - 1, centerIndex + 1);
+
+  return Math.max(
+    sensorReadings[leftIndex] ?? 0,
+    sensorReadings[centerIndex] ?? 0,
+    sensorReadings[rightIndex] ?? 0
+  );
 }

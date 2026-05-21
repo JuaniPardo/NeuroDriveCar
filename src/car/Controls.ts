@@ -8,6 +8,7 @@ export interface ControlState {
   reverse: boolean;
   left: boolean;
   right: boolean;
+  steerIntent?: number;
 }
 
 export class Controls {
@@ -15,6 +16,7 @@ export class Controls {
   public reverse = false;
   public left = false;
   public right = false;
+  public steerIntent = 0;
 
   private attached = false;
   private readonly resetOnBlur = (): void => {
@@ -53,6 +55,7 @@ export class Controls {
     this.reverse = state.reverse;
     this.left = state.left;
     this.right = state.right;
+    this.steerIntent = state.steerIntent ?? 0;
   }
 
   public getState(): ControlState {
@@ -61,6 +64,7 @@ export class Controls {
       reverse: this.reverse,
       left: this.left,
       right: this.right,
+      steerIntent: this.steerIntent,
     };
   }
 
@@ -69,6 +73,7 @@ export class Controls {
     this.reverse = false;
     this.left = false;
     this.right = false;
+    this.steerIntent = 0;
   }
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
@@ -109,11 +114,13 @@ export class Controls {
 
     if (LEFT_KEYS.has(key)) {
       this.left = isPressed;
+      this.steerIntent = Number(this.right) - Number(this.left);
       return;
     }
 
     if (RIGHT_KEYS.has(key)) {
       this.right = isPressed;
+      this.steerIntent = Number(this.right) - Number(this.left);
     }
   }
 }

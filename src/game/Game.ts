@@ -9,7 +9,7 @@ import {
   type SimulationControlSnapshot,
   type SimulationSpeedOption,
 } from './simulationControls';
-import { TrafficManager } from '../traffic/TrafficManager';
+import { TrafficManager, type TrainingTrafficPhase } from '../traffic/TrafficManager';
 import { ControlsPanel } from '../ui/ControlsPanel';
 import { Hud } from '../ui/Hud';
 import {
@@ -469,11 +469,13 @@ export class Game implements Updatable, Renderable {
   }
 
   private synchronizeSimulationWorld(): void {
+    this.trafficManager.setTrainingPhase(this.getTrainingTrafficPhase());
     this.trafficManager.reset(this.populationManager.getBestCar());
     this.populationManager.updateSensors(
       this.road.borderSegments,
       this.trafficManager.getTrafficPolygons()
     );
+    this.populationManager.updateTrainingSignals(0, this.road.borderSegments);
     this.populationManager.refreshStats();
     this.updatePersistenceMessageForCurrentSeed();
   }
@@ -493,6 +495,10 @@ export class Game implements Updatable, Renderable {
     this.populationManager.updateSensors(
       this.road.borderSegments,
       this.trafficManager.getTrafficPolygons()
+    );
+    this.populationManager.updateTrainingSignals(
+      deltaTimeSeconds,
+      this.road.borderSegments
     );
     this.populationManager.refreshStats();
 
@@ -586,6 +592,23 @@ export class Game implements Updatable, Renderable {
 
   private buildRestartActionMessage(): string {
     return `Restarted GEN ${this.populationManager.getStats().generation} @ ${this.getSimulationSpeedMultiplier()}x.`;
+  }
+
+  private getTrainingTrafficPhase(): TrainingTrafficPhase {
+    const populationStats = this.populationManager.getStats();
+
+    if (
+      populationStats.populationSource === 'random' &&
+      populationStats.generation <= 2
+    ) {
+      return 'road-only';
+    }
+
+    if (populationStats.generation <= 5) {
+      return 'sparse-traffic';
+    }
+
+    return 'normal-traffic';
   }
 
   private renderWorldBackdrop(

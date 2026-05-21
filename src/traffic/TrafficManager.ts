@@ -35,6 +35,17 @@ const TRAFFIC_PATTERN: readonly number[][] = [
   [0, 2],
 ];
 
+const SPARSE_TRAFFIC_PATTERN: readonly number[][] = [
+  [1],
+  [0],
+  [2],
+  [1],
+  [0],
+  [2],
+];
+
+export type TrainingTrafficPhase = 'road-only' | 'sparse-traffic' | 'normal-traffic';
+
 interface TrafficVehicle {
   readonly car: Car;
   readonly laneIndex: number;
@@ -46,6 +57,7 @@ export class TrafficManager {
   private readonly trafficPolygons: Point[][] = [];
   private nextSpawnY = 0;
   private patternIndex = 0;
+  private trainingPhase: TrainingTrafficPhase = 'normal-traffic';
 
   public constructor(road: Road) {
     this.road = road;
@@ -53,7 +65,13 @@ export class TrafficManager {
 
   public reset(playerCar: Car): void {
     this.clear();
-    this.patternIndex = getRandomPatternIndex();
+    this.patternIndex = getRandomPatternIndex(this.getPhaseConfig().patterns.length);
+
+    if (this.trainingPhase === 'road-only') {
+      this.nextSpawnY = playerCar.y - this.getPhaseConfig().spawnDistance;
+      return;
+    }
+
     this.seedInitialTraffic(playerCar);
   }
 
@@ -132,6 +150,14 @@ export class TrafficManager {
     return this.trafficPolygons;
   }
 
+  public setTrainingPhase(phase: TrainingTrafficPhase): void {
+    this.trainingPhase = phase;
+  }
+
+  public getTrainingPhase(): TrainingTrafficPhase {
+    return this.trainingPhase;
+  }
+
   public getLaneDebugLabel(): string {
     if (this.vehicles.length === 0) {
       return 'NONE';
@@ -152,17 +178,27 @@ export class TrafficManager {
   }
 
   private ensureTrafficAhead(playerY: number): void {
-    const spawnLimitY = playerY - TRAFFIC_SPAWN_DISTANCE;
+    const phaseConfig = this.getPhaseConfig();
+    const spawnLimitY = playerY - phaseConfig.spawnDistance;
+
+    if (phaseConfig.patterns.length === 0) {
+      return;
+    }
 
     while (this.nextSpawnY >= spawnLimitY) {
       this.spawnPatternRowAt(this.nextSpawnY);
       this.advancePattern();
-      this.nextSpawnY -= TRAFFIC_ROW_SPACING;
+      this.nextSpawnY -= phaseConfig.rowSpacing;
     }
   }
 
   private spawnPatternRowAt(spawnY: number): void {
-    const lanePattern = TRAFFIC_PATTERN[this.patternIndex];
+    const phaseConfig = this.getPhaseConfig();
+    const lanePattern = phaseConfig.patterns[this.patternIndex];
+
+    if (lanePattern === undefined) {
+      return;
+    }
 
     for (const laneIndex of lanePattern) {
       const spawnX = this.road.getLaneCenter(laneIndex);
@@ -193,18 +229,20 @@ export class TrafficManager {
   }
 
   private seedInitialTraffic(playerCar: Car): void {
+    const phaseConfig = this.getPhaseConfig();
     const initialGap = this.getInitialSpawnGap(playerCar);
-    const aheadDistance = TRAFFIC_SPAWN_DISTANCE;
-    const behindDistance = TRAFFIC_SPAWN_DISTANCE * (1 - INITIAL_TRAFFIC_AHEAD_RATIO);
+    const aheadDistance = phaseConfig.spawnDistance;
+    const behindDistance =
+      phaseConfig.spawnDistance * (1 - phaseConfig.initialAheadRatio);
     const firstAheadRowY = playerCar.y - initialGap;
     const lastAheadRowY = playerCar.y - aheadDistance;
-    const firstBehindRowY = playerCar.y + initialGap + TRAFFIC_ROW_SPACING;
+    const firstBehindRowY = playerCar.y + initialGap + phaseConfig.rowSpacing;
     const lastBehindRowY = playerCar.y + behindDistance;
 
     for (
       let spawnY = firstAheadRowY;
       spawnY >= lastAheadRowY;
-      spawnY -= TRAFFIC_ROW_SPACING
+      spawnY -= phaseConfig.rowSpacing
     ) {
       this.spawnPatternRowAt(spawnY);
       this.advancePattern();
@@ -213,19 +251,26 @@ export class TrafficManager {
     for (
       let spawnY = firstBehindRowY;
       spawnY <= lastBehindRowY;
-      spawnY += TRAFFIC_ROW_SPACING
+      spawnY += phaseConfig.rowSpacing
     ) {
       this.spawnPatternRowAt(spawnY);
       this.advancePattern();
     }
 
     this.nextSpawnY =
-      lastAheadRowY - TRAFFIC_ROW_SPACING;
+      lastAheadRowY - phaseConfig.rowSpacing;
   }
 
   private advancePattern(): void {
+    const phaseConfig = this.getPhaseConfig();
+
+    if (phaseConfig.patterns.length === 0) {
+      this.patternIndex = 0;
+      return;
+    }
+
     this.patternIndex =
-      (this.patternIndex + 1) % TRAFFIC_PATTERN.length;
+      (this.patternIndex + 1) % phaseConfig.patterns.length;
   }
 
   private canSpawnAt(
@@ -306,8 +351,44 @@ export class TrafficManager {
   private getLaneSpeed(laneIndex: number): number {
     return TRAFFIC_SPEED_BY_LANE[laneIndex] ?? TRAFFIC_SPEED_BY_LANE[1];
   }
+
+  private getPhaseConfig(): {
+    patterns: readonly number[][];
+    rowSpacing: number;
+    spawnDistance: number;
+    initialAheadRatio: number;
+  } {
+    if (this.trainingPhase === 'road-only') {
+      return {
+        patterns: [],
+        rowSpacing: TRAFFIC_ROW_SPACING,
+        spawnDistance: TRAFFIC_SPAWN_DISTANCE,
+        initialAheadRatio: INITIAL_TRAFFIC_AHEAD_RATIO,
+      };
+    }
+
+    if (this.trainingPhase === 'sparse-traffic') {
+      return {
+        patterns: SPARSE_TRAFFIC_PATTERN,
+        rowSpacing: 360,
+        spawnDistance: 1_000,
+        initialAheadRatio: 0.58,
+      };
+    }
+
+    return {
+      patterns: TRAFFIC_PATTERN,
+      rowSpacing: TRAFFIC_ROW_SPACING,
+      spawnDistance: TRAFFIC_SPAWN_DISTANCE,
+      initialAheadRatio: INITIAL_TRAFFIC_AHEAD_RATIO,
+    };
+  }
 }
 
-function getRandomPatternIndex(): number {
-  return Math.floor(Math.random() * TRAFFIC_PATTERN.length);
+function getRandomPatternIndex(patternCount: number): number {
+  if (patternCount <= 0) {
+    return 0;
+  }
+
+  return Math.floor(Math.random() * patternCount);
 }

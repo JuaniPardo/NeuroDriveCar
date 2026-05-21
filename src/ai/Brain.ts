@@ -9,6 +9,8 @@ const DEFAULT_HIDDEN_LAYER_SIZE = 6;
 const FORWARD_OUTPUT_THRESHOLD = 0.48;
 const STEERING_OUTPUT_THRESHOLD = 0.5;
 const REVERSE_OUTPUT_THRESHOLD = 0.6;
+const STEER_INTENT_DEAD_ZONE = 0.1;
+const REVERSE_OBSTACLE_GATE_THRESHOLD = 0.7;
 
 export const BRAIN_OUTPUT_LABELS = [
   'forward',
@@ -32,6 +34,10 @@ export interface BrainGenome {
   readonly network: NeuralNetworkSnapshot;
 }
 
+export interface BrainDecision extends ControlState {
+  steerIntent: number;
+}
+
 export class Brain {
   public readonly network: NeuralNetwork;
   public readonly lastOutputs: number[];
@@ -45,7 +51,7 @@ export class Brain {
     this.lastOutputs = new Array(BRAIN_OUTPUT_LABELS.length).fill(0);
   }
 
-  public decide(sensorInputs: readonly number[]): ControlState {
+  public decide(sensorInputs: readonly number[]): BrainDecision {
     const outputs = this.network.feedForward(sensorInputs);
     const outputLayer = this.network.layers[this.network.layers.length - 1];
     const visualOutputs = outputLayer?.visualOutputs ?? outputs;
@@ -58,22 +64,28 @@ export class Brain {
     const leftVisual = visualOutputs[1] ?? 0;
     const rightVisual = visualOutputs[2] ?? 0;
     const reverseVisual = visualOutputs[3] ?? 0;
+    const frontObstacleSignal = getFrontSensorSignal(sensorInputs);
     const forward =
       forwardVisual > reverseVisual &&
       forwardVisual > FORWARD_OUTPUT_THRESHOLD;
     const reverse =
       reverseVisual > forwardVisual &&
-      reverseVisual > REVERSE_OUTPUT_THRESHOLD;
+      reverseVisual > REVERSE_OUTPUT_THRESHOLD &&
+      frontObstacleSignal > REVERSE_OBSTACLE_GATE_THRESHOLD;
     const left =
       leftVisual > rightVisual && leftVisual > STEERING_OUTPUT_THRESHOLD;
     const right =
       rightVisual > leftVisual && rightVisual > STEERING_OUTPUT_THRESHOLD;
+    const rawSteerIntent = rightVisual - leftVisual;
+    const steerIntent =
+      Math.abs(rawSteerIntent) < STEER_INTENT_DEAD_ZONE ? 0 : rawSteerIntent;
 
     return {
       forward,
       left,
       right,
       reverse,
+      steerIntent,
     };
   }
 
@@ -117,4 +129,20 @@ export class Brain {
 
     return true;
   }
+}
+
+function getFrontSensorSignal(sensorInputs: readonly number[]): number {
+  if (sensorInputs.length === 0) {
+    return 0;
+  }
+
+  const centerIndex = Math.floor(sensorInputs.length * 0.5);
+  const leftIndex = Math.max(0, centerIndex - 1);
+  const rightIndex = Math.min(sensorInputs.length - 1, centerIndex + 1);
+
+  return Math.max(
+    sensorInputs[leftIndex] ?? 0,
+    sensorInputs[centerIndex] ?? 0,
+    sensorInputs[rightIndex] ?? 0
+  );
 }
