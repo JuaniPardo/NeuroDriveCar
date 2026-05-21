@@ -1,4 +1,5 @@
 import type { Segment } from '../collision/geometry';
+import { clamp, remapClamped } from '../utils/math';
 import { THEME } from '../utils/visualTheme';
 import { clampLaneIndex, Lane } from './Lane';
 
@@ -56,6 +57,37 @@ export class Road {
     const safeIndex = clampLaneIndex(index, this.laneCount);
 
     return this.lanes[safeIndex];
+  }
+
+  public getNearestLaneIndex(x: number): number {
+    const relativeX = x - this.left;
+    const rawIndex = Math.floor(relativeX / this.laneWidth);
+
+    return clampLaneIndex(rawIndex, this.laneCount);
+  }
+
+  public getNearestLaneCenter(x: number): number {
+    return this.getLaneCenter(this.getNearestLaneIndex(x));
+  }
+
+  public getNearestLaneCenterOffset(x: number): number {
+    return x - this.getNearestLaneCenter(x);
+  }
+
+  public getNearestLaneCenterOffsetNormalized(x: number): number {
+    const halfLaneWidth = this.laneWidth * 0.5;
+
+    if (halfLaneWidth <= Number.EPSILON) {
+      return 0;
+    }
+
+    return clamp(this.getNearestLaneCenterOffset(x) / halfLaneWidth, -1, 1);
+  }
+
+  public getBorderProximitySignal(x: number): number {
+    const borderDistance = Math.min(Math.abs(x - this.left), Math.abs(this.right - x));
+
+    return remapClamped(borderDistance, 0, this.laneWidth * 0.45, 1, 0);
   }
 
   public render(

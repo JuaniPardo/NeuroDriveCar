@@ -1,5 +1,5 @@
 import type { BrainSnapshot } from '../ai/Brain';
-import type { CarControlMode } from '../car/Car';
+import type { CarControlMode, SteeringDebugSnapshot } from '../car/Car';
 import type { ControlState } from '../car/Controls';
 import {
   formatSimulationSpeedLabel,
@@ -13,10 +13,8 @@ import { FONT_MONO, THEME } from '../utils/visualTheme';
 import { NeuralVisualizer } from './NeuralVisualizer';
 
 const PANEL_TITLE = 'NEURODRIVECAR / MVP 12';
+const PANEL_PADDING = 12;
 const SENSOR_STRIP_HEIGHT = 14;
-const STATUS_LINE_HEIGHT = 18;
-const STATUS_TOP_PADDING = 12;
-const STATUS_SECTION_GAP = 8;
 
 export interface HudRenderData {
   width: number;
@@ -31,6 +29,9 @@ export interface HudRenderData {
   laneSpeedLabel: string;
   activeTrafficSettings: TrafficSettings;
   selectedTrafficSettings: TrafficSettings;
+  steeringDebug: SteeringDebugSnapshot;
+  laneCenterOffset: number;
+  edgeProximity: number;
   sensorHitCount: number;
   sensorReadings: readonly number[];
   controlState: Readonly<ControlState>;
@@ -53,6 +54,12 @@ export interface HudRenderData {
   persistenceMessage: string;
 }
 
+interface HudRow {
+  label: string;
+  value: string;
+  valueColor?: string;
+}
+
 export class Hud {
   private readonly neuralVisualizer: NeuralVisualizer;
 
@@ -62,32 +69,16 @@ export class Hud {
 
   public render(ctx: CanvasRenderingContext2D, data: HudRenderData): void {
     const margin = 16;
-    const statusPanelX = margin;
-    const statusPanelY = margin;
-    const statusPanelWidth = Math.min(324, Math.max(288, data.width * 0.24));
-    const statusPanelHeight = 652;
-    const instructionsPanelY = statusPanelY + statusPanelHeight + 10;
-    const instructionsPanelHeight = 122;
+    const panelX = margin;
+    const panelY = margin;
+    const panelWidth = Math.min(372, Math.max(326, data.width * 0.29));
+    const panelHeight = 476;
     const neuralPanelWidth = Math.min(420, Math.max(320, data.width * 0.22));
     const neuralPanelHeight = Math.min(360, Math.max(300, data.height * 0.34));
     const neuralPanelX = data.width - neuralPanelWidth - margin;
     const neuralPanelY = margin;
 
-    this.renderStatusPanel(
-      ctx,
-      statusPanelX,
-      statusPanelY,
-      statusPanelWidth,
-      statusPanelHeight,
-      data
-    );
-    this.renderInstructionsPanel(
-      ctx,
-      statusPanelX,
-      instructionsPanelY,
-      statusPanelWidth,
-      instructionsPanelHeight
-    );
+    this.renderMainPanel(ctx, panelX, panelY, panelWidth, panelHeight, data);
     this.neuralVisualizer.render(
       ctx,
       neuralPanelX,
@@ -98,7 +89,7 @@ export class Hud {
     );
   }
 
-  private renderStatusPanel(
+  private renderMainPanel(
     ctx: CanvasRenderingContext2D,
     x: number,
     y: number,
@@ -106,13 +97,24 @@ export class Hud {
     height: number,
     data: HudRenderData
   ): void {
-    const statusLabel = data.damaged ? 'DAMAGED' : 'ACTIVE';
-    const statusColor = data.damaged ? THEME.hud.alertColor : THEME.hud.okColor;
-    const controlModeColor =
-      data.controlMode === 'ai' ? THEME.hud.aiColor : THEME.hud.textColor;
-    const textX = x + 12;
-    const valueX = x + width - 12;
-    let cursorY = y + STATUS_TOP_PADDING;
+    const headerHeight = 56;
+    const topStatusHeight = 34;
+    const gridGap = 8;
+    const footerHeight = 122;
+    const sectionGap = 10;
+    const sectionWidth = (width - PANEL_PADDING * 2 - sectionGap) * 0.5;
+    const sectionHeight =
+      height -
+      PANEL_PADDING * 2 -
+      headerHeight -
+      topStatusHeight -
+      footerHeight -
+      gridGap * 2;
+    const rowHeight = (sectionHeight - sectionGap) * 0.5;
+    const leftColumnX = x + PANEL_PADDING;
+    const rightColumnX = leftColumnX + sectionWidth + sectionGap;
+    const gridTopY = y + PANEL_PADDING + headerHeight + gridGap + topStatusHeight + gridGap;
+    const footerY = gridTopY + rowHeight * 2 + sectionGap;
 
     ctx.save();
     ctx.fillStyle = THEME.hud.panelBackground;
@@ -121,250 +123,319 @@ export class Hud {
     ctx.fillRect(x, y, width, height);
     ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
 
+    this.renderHeader(ctx, x + PANEL_PADDING, y + PANEL_PADDING, width - PANEL_PADDING * 2);
+    this.renderTopStatus(
+      ctx,
+      x + PANEL_PADDING,
+      y + PANEL_PADDING + headerHeight,
+      width - PANEL_PADDING * 2,
+      topStatusHeight,
+      data
+    );
+
+    this.renderSectionBox(
+      ctx,
+      leftColumnX,
+      gridTopY,
+      sectionWidth,
+      rowHeight,
+      'VEHICLE',
+      this.getVehicleRows(data)
+    );
+    this.renderSectionBox(
+      ctx,
+      rightColumnX,
+      gridTopY,
+      sectionWidth,
+      rowHeight,
+      'POPULATION',
+      this.getPopulationRows(data)
+    );
+    this.renderSectionBox(
+      ctx,
+      leftColumnX,
+      gridTopY + rowHeight + sectionGap,
+      sectionWidth,
+      rowHeight,
+      'PERSISTENCE',
+      this.getPersistenceRows(data)
+    );
+    this.renderSectionBox(
+      ctx,
+      rightColumnX,
+      gridTopY + rowHeight + sectionGap,
+      sectionWidth,
+      rowHeight,
+      'TRAFFIC',
+      this.getTrafficRows(data)
+    );
+
+    this.renderFooter(
+      ctx,
+      x + PANEL_PADDING,
+      footerY,
+      width - PANEL_PADDING * 2,
+      footerHeight,
+      data
+    );
+    ctx.restore();
+  }
+
+  private renderHeader(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    width: number
+  ): void {
+    ctx.fillStyle = THEME.hud.textColor;
     ctx.font = `9px ${FONT_MONO}`;
     ctx.textBaseline = 'top';
-    ctx.fillStyle = THEME.hud.textColor;
-    ctx.fillText(PANEL_TITLE, textX, cursorY);
-    cursorY += STATUS_LINE_HEIGHT + 4;
+    ctx.fillText(PANEL_TITLE, x, y);
 
-    this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'FPS', data.framesPerSecond.toFixed(1));
-    cursorY += STATUS_LINE_HEIGHT;
+    ctx.strokeStyle = THEME.hud.panelDivider;
+    ctx.beginPath();
+    ctx.moveTo(x, y + 26.5);
+    ctx.lineTo(x + width, y + 26.5);
+    ctx.stroke();
+  }
+
+  private renderTopStatus(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    data: HudRenderData
+  ): void {
+    const halfWidth = width * 0.5;
+
+    this.renderKeyValueRow(ctx, x, x + halfWidth - 8, y + 8, 'FPS', data.framesPerSecond.toFixed(1));
     this.renderKeyValueRow(
       ctx,
-      textX,
-      valueX,
-      cursorY,
+      x + halfWidth + 8,
+      x + width,
+      y + 8,
       'SIM',
-      data.paused ? 'PAUSED' : 'RUNNING',
+      `${data.paused ? 'PAUSED' : 'RUNNING'} / ${formatSimulationSpeedLabel(data.simulationSpeed)}`,
       data.paused ? THEME.hud.alertColor : THEME.hud.okColor
     );
-    cursorY += STATUS_LINE_HEIGHT;
-    this.renderKeyValueRow(
-      ctx,
-      textX,
-      valueX,
-      cursorY,
-      'MULT',
-      formatSimulationSpeedLabel(data.simulationSpeed)
-    );
-    cursorY += STATUS_LINE_HEIGHT;
-    this.renderDivider(ctx, x + 12, x + width - 12, cursorY);
-    cursorY += STATUS_SECTION_GAP;
 
-    this.renderSectionLabel(ctx, textX, cursorY, 'VEHICLE');
-    cursorY += 14;
-    this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'STATE', statusLabel, statusColor);
-    cursorY += STATUS_LINE_HEIGHT;
-    this.renderKeyValueRow(
-      ctx,
-      textX,
-      valueX,
-      cursorY,
-      'MODE',
-      data.controlMode.toUpperCase(),
-      controlModeColor
-    );
-    cursorY += STATUS_LINE_HEIGHT;
-    this.renderKeyValueRow(
-      ctx,
-      textX,
-      valueX,
-      cursorY,
-      'SPEED',
-      `${Math.abs(data.speed).toFixed(1)} ${getVelocityDirectionLabel(data.speed)}`
-    );
-    cursorY += STATUS_LINE_HEIGHT;
-    this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'PROG', data.traveledDistance.toFixed(1));
-    cursorY += STATUS_LINE_HEIGHT;
-    this.renderKeyValueRow(
-      ctx,
-      textX,
-      valueX,
-      cursorY,
-      'CTRL',
-      formatControlState(data.controlState)
-    );
-    cursorY += STATUS_LINE_HEIGHT;
-    this.renderDivider(ctx, x + 12, x + width - 12, cursorY);
-    cursorY += STATUS_SECTION_GAP;
+    ctx.strokeStyle = THEME.hud.panelDivider;
+    ctx.beginPath();
+    ctx.moveTo(x, y + height + 0.5);
+    ctx.lineTo(x + width, y + height + 0.5);
+    ctx.stroke();
+  }
 
-    this.renderSectionLabel(ctx, textX, cursorY, 'POPULATION');
-    cursorY += 14;
-    this.renderKeyValueRow(
-      ctx,
-      textX,
-      valueX,
-      cursorY,
-      'BEST',
-      `${data.bestCarIndex + 1} / GEN ${data.generation}`
-    );
-    cursorY += STATUS_LINE_HEIGHT;
-    this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'POP', String(data.populationSize));
-    cursorY += STATUS_LINE_HEIGHT;
-    this.renderKeyValueRow(
-      ctx,
-      textX,
-      valueX,
-      cursorY,
-      'NEXT POP',
-      String(data.selectedPopulationSize)
-    );
-    cursorY += STATUS_LINE_HEIGHT;
-    this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'ALIVE', String(data.aliveCount));
-    cursorY += STATUS_LINE_HEIGHT;
-    this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'CRASH', String(data.crashedCount));
-    cursorY += STATUS_LINE_HEIGHT;
-    this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'B MAX', data.bestProgress.toFixed(1));
-    cursorY += STATUS_LINE_HEIGHT;
-    this.renderDivider(ctx, x + 12, x + width - 12, cursorY);
-    cursorY += STATUS_SECTION_GAP;
+  private renderSectionBox(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    label: string,
+    rows: readonly HudRow[]
+  ): void {
+    ctx.fillStyle = THEME.hud.panelBackgroundStrong;
+    ctx.strokeStyle = THEME.hud.panelBorder;
+    ctx.lineWidth = 1;
+    ctx.fillRect(x, y, width, height);
+    ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
 
-    this.renderSectionLabel(ctx, textX, cursorY, 'PERSISTENCE');
-    cursorY += 14;
-    this.renderKeyValueRow(
-      ctx,
-      textX,
-      valueX,
-      cursorY,
-      'SAVED',
-      data.savedBrainExists ? 'YES' : 'NO',
-      data.savedBrainExists ? THEME.hud.okColor : THEME.hud.mutedTextColor
-    );
-    cursorY += STATUS_LINE_HEIGHT;
-    this.renderKeyValueRow(
-      ctx,
-      textX,
-      valueX,
-      cursorY,
-      'SRC',
-      data.populationSource.toUpperCase()
-    );
-    cursorY += STATUS_LINE_HEIGHT;
-    this.renderKeyValueRow(
-      ctx,
-      textX,
-      valueX,
-      cursorY,
-      'MUT',
-      data.mutationAmount.toFixed(2)
-    );
-    cursorY += STATUS_LINE_HEIGHT;
-    this.renderKeyValueRow(
-      ctx,
-      textX,
-      valueX,
-      cursorY,
-      'NEXT MUT',
-      data.selectedMutationRate.toFixed(2)
-    );
-    cursorY += STATUS_LINE_HEIGHT;
-    this.renderKeyValueRow(
-      ctx,
-      textX,
-      valueX,
-      cursorY,
-      'S BEST',
-      data.savedBestDistance === null ? '--' : data.savedBestDistance.toFixed(1)
-    );
-    cursorY += STATUS_LINE_HEIGHT;
-    this.renderKeyValueRow(
-      ctx,
-      textX,
-      valueX,
-      cursorY,
-      'IO',
-      truncateStatusMessage(data.persistenceMessage, 28)
-    );
-    cursorY += STATUS_LINE_HEIGHT;
-    this.renderKeyValueRow(
-      ctx,
-      textX,
-      valueX,
-      cursorY,
-      'CTRL',
-      truncateStatusMessage(data.lastControlAction, 28)
-    );
-    cursorY += STATUS_LINE_HEIGHT;
-    this.renderDivider(ctx, x + 12, x + width - 12, cursorY);
-    cursorY += STATUS_SECTION_GAP;
+    ctx.fillStyle = THEME.hud.sectionLabelColor;
+    ctx.font = `7px ${FONT_MONO}`;
+    ctx.textBaseline = 'top';
+    ctx.fillText(label, x + 10, y + 8);
 
-    this.renderSectionLabel(ctx, textX, cursorY, 'TRAFFIC');
-    cursorY += 14;
-    this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'COUNT', String(data.trafficCount));
-    cursorY += STATUS_LINE_HEIGHT;
-    this.renderKeyValueRow(
-      ctx,
-      textX,
-      valueX,
-      cursorY,
-      'PHASE',
-      data.activeTrafficSettings.phase
-    );
-    cursorY += STATUS_LINE_HEIGHT;
-    this.renderKeyValueRow(
-      ctx,
-      textX,
-      valueX,
-      cursorY,
-      'ENABLED',
-      data.activeTrafficSettings.enabled ? 'TRUE' : 'FALSE'
-    );
-    cursorY += STATUS_LINE_HEIGHT;
-    this.renderKeyValueRow(
-      ctx,
-      textX,
-      valueX,
-      cursorY,
-      'DENS',
-      data.activeTrafficSettings.density.toUpperCase()
-    );
-    cursorY += STATUS_LINE_HEIGHT;
-    this.renderKeyValueRow(
-      ctx,
-      textX,
-      valueX,
-      cursorY,
-      'SPEED',
-      data.activeTrafficSettings.speedPreset.toUpperCase()
-    );
-    cursorY += STATUS_LINE_HEIGHT;
-    this.renderKeyValueRow(
-      ctx,
-      textX,
-      valueX,
-      cursorY,
-      'SPAWN',
-      data.activeTrafficSettings.spawnDistancePreset.toUpperCase()
-    );
-    cursorY += STATUS_LINE_HEIGHT;
-    this.renderKeyValueRow(
-      ctx,
-      textX,
-      valueX,
-      cursorY,
-      'NEXT',
-      formatTrafficSettingsLabel(data.selectedTrafficSettings)
-    );
-    cursorY += STATUS_LINE_HEIGHT;
-    this.renderKeyValueRow(
-      ctx,
-      textX,
-      valueX,
-      cursorY,
-      'TARGET',
-      data.trafficTargetSpeed.toFixed(1)
-    );
-    cursorY += STATUS_LINE_HEIGHT;
-    this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'LANES', data.laneSpeedLabel);
-    cursorY += STATUS_LINE_HEIGHT;
-    this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'S HIT', String(data.sensorHitCount));
-    cursorY += STATUS_LINE_HEIGHT;
-    this.renderSectionLabel(ctx, textX, cursorY, 'SENSORS');
-    cursorY += 14;
+    let cursorY = y + 24;
+    const valueX = x + width - 10;
 
-    this.renderSensorStrip(ctx, x + 12, cursorY, width - 24, data.sensorReadings);
+    for (const row of rows) {
+      this.renderKeyValueRow(ctx, x + 10, valueX, cursorY, row.label, row.value, row.valueColor);
+      cursorY += 14;
+    }
+  }
 
-    ctx.restore();
+  private renderFooter(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    data: HudRenderData
+  ): void {
+    const textX = x + 10;
+
+    ctx.fillStyle = THEME.hud.panelBackgroundStrong;
+    ctx.strokeStyle = THEME.hud.panelBorder;
+    ctx.lineWidth = 1;
+    ctx.fillRect(x, y, width, height);
+    ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
+
+    ctx.fillStyle = THEME.hud.sectionLabelColor;
+    ctx.font = `7px ${FONT_MONO}`;
+    ctx.textBaseline = 'top';
+    ctx.fillText('INSTRUCTIONS', textX, y + 8);
+
+    this.renderSensorStrip(ctx, x + 10, y + 22, width - 20, data.sensorReadings);
+
+    ctx.font = `8px ${FONT_MONO}`;
+    ctx.fillStyle = THEME.hud.mutedTextColor;
+    ctx.fillText(`IO: ${truncateStatusMessage(data.persistenceMessage, 56)}`, textX, y + 44);
+    ctx.fillText(`CTRL: ${truncateStatusMessage(data.lastControlAction, 54)}`, textX, y + 58);
+    ctx.fillText('P pause/resume   R restart   1-4 speed presets', textX, y + 76);
+    ctx.fillText('[ ] population   - = mutation   S / L / D brain io', textX, y + 90);
+    ctx.fillText('Traffic settings apply on restart/new generation.', textX, y + 104);
+  }
+
+  private getVehicleRows(data: HudRenderData): HudRow[] {
+    const statusColor = data.damaged ? THEME.hud.alertColor : THEME.hud.okColor;
+    const controlModeColor =
+      data.controlMode === 'ai' ? THEME.hud.aiColor : THEME.hud.textColor;
+
+    return [
+      {
+        label: 'STATE',
+        value: data.damaged ? 'DAMAGED' : 'ACTIVE',
+        valueColor: statusColor,
+      },
+      {
+        label: 'MODE',
+        value: data.controlMode.toUpperCase(),
+        valueColor: controlModeColor,
+      },
+      {
+        label: 'SPEED',
+        value: `${Math.abs(data.speed).toFixed(1)} ${getVelocityDirectionLabel(data.speed)}`,
+      },
+      {
+        label: 'PROG',
+        value: data.traveledDistance.toFixed(1),
+      },
+      {
+        label: 'STEER',
+        value: `${data.steeringDebug.rawSteerIntent.toFixed(2)} / ${data.steeringDebug.smoothedSteer.toFixed(2)}`,
+        valueColor: THEME.hud.aiColor,
+      },
+      {
+        label: 'OUT',
+        value: `${data.steeringDebug.leftOutput.toFixed(2)} ${data.steeringDebug.rightOutput.toFixed(2)}`,
+      },
+      {
+        label: 'LANE',
+        value: data.laneCenterOffset.toFixed(2),
+      },
+      {
+        label: 'EDGE',
+        value: data.edgeProximity.toFixed(2),
+      },
+      {
+        label: 'CTRL',
+        value: formatControlState(data.controlState),
+      },
+    ];
+  }
+
+  private getPopulationRows(data: HudRenderData): HudRow[] {
+    return [
+      {
+        label: 'BEST',
+        value: String(data.bestCarIndex + 1),
+      },
+      {
+        label: 'GEN',
+        value: String(data.generation),
+      },
+      {
+        label: 'POP',
+        value: String(data.populationSize),
+      },
+      {
+        label: 'NEXT POP',
+        value: String(data.selectedPopulationSize),
+      },
+      {
+        label: 'ALIVE',
+        value: String(data.aliveCount),
+      },
+      {
+        label: 'CRASH',
+        value: String(data.crashedCount),
+      },
+      {
+        label: 'B MAX',
+        value: data.bestProgress.toFixed(1),
+      },
+    ];
+  }
+
+  private getPersistenceRows(data: HudRenderData): HudRow[] {
+    return [
+      {
+        label: 'SAVED',
+        value: data.savedBrainExists ? 'YES' : 'NO',
+        valueColor: data.savedBrainExists
+          ? THEME.hud.okColor
+          : THEME.hud.mutedTextColor,
+      },
+      {
+        label: 'SRC',
+        value: data.populationSource.toUpperCase(),
+      },
+      {
+        label: 'MUT',
+        value: data.mutationAmount.toFixed(2),
+      },
+      {
+        label: 'NEXT MUT',
+        value: data.selectedMutationRate.toFixed(2),
+      },
+      {
+        label: 'S BEST',
+        value: data.savedBestDistance === null ? '--' : data.savedBestDistance.toFixed(1),
+      },
+    ];
+  }
+
+  private getTrafficRows(data: HudRenderData): HudRow[] {
+    return [
+      {
+        label: 'PHASE',
+        value: data.activeTrafficSettings.phase,
+      },
+      {
+        label: 'COUNT',
+        value: String(data.trafficCount),
+      },
+      {
+        label: 'DENS',
+        value: data.activeTrafficSettings.density.toUpperCase(),
+      },
+      {
+        label: 'SPEED',
+        value: data.activeTrafficSettings.speedPreset.toUpperCase(),
+      },
+      {
+        label: 'SPAWN',
+        value: data.activeTrafficSettings.spawnDistancePreset.toUpperCase(),
+      },
+      {
+        label: 'NEXT',
+        value: formatTrafficSettingsLabel(data.selectedTrafficSettings),
+      },
+      {
+        label: 'TARGET',
+        value: data.trafficTargetSpeed.toFixed(1),
+      },
+      {
+        label: 'LANES',
+        value: data.laneSpeedLabel,
+      },
+      {
+        label: 'S HIT',
+        value: String(data.sensorHitCount),
+      },
+    ];
   }
 
   private renderKeyValueRow(
@@ -387,68 +458,6 @@ export class Hud {
     ctx.textAlign = 'left';
   }
 
-  private renderSectionLabel(
-    ctx: CanvasRenderingContext2D,
-    x: number,
-    y: number,
-    label: string
-  ): void {
-    ctx.font = `7px ${FONT_MONO}`;
-    ctx.fillStyle = THEME.hud.sectionLabelColor;
-    ctx.fillText(label, x, y);
-  }
-
-  private renderDivider(
-    ctx: CanvasRenderingContext2D,
-    startX: number,
-    endX: number,
-    y: number
-  ): void {
-    ctx.strokeStyle = THEME.hud.panelDivider;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(startX, y + 0.5);
-    ctx.lineTo(endX, y + 0.5);
-    ctx.stroke();
-  }
-
-  private renderInstructionsPanel(
-    ctx: CanvasRenderingContext2D,
-    x: number,
-    y: number,
-    width: number,
-    height: number
-  ): void {
-    const textX = x + 12;
-    const line1Y = y + 10;
-    const line2Y = line1Y + 18;
-    const line3Y = line2Y + 14;
-    const line4Y = line3Y + 14;
-    const line5Y = line4Y + 14;
-    const line6Y = line5Y + 14;
-
-    ctx.save();
-    ctx.fillStyle = THEME.hud.panelBackground;
-    ctx.strokeStyle = THEME.hud.panelBorder;
-    ctx.lineWidth = 1;
-    ctx.fillRect(x, y, width, height);
-    ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
-
-    ctx.textBaseline = 'top';
-    ctx.font = `9px ${FONT_MONO}`;
-    ctx.fillStyle = THEME.hud.okColor;
-    ctx.fillText('INSTRUCTIONS', textX, line1Y);
-
-    ctx.fillStyle = THEME.hud.mutedTextColor;
-    ctx.font = `8px ${FONT_MONO}`;
-    ctx.fillText('P pause/resume   R restart   1-4 speed presets', textX, line2Y);
-    ctx.fillText('[ and ] arm population size   - and = arm mutation', textX, line3Y);
-    ctx.fillText('S save best brain   L load saved brain   D delete saved', textX, line4Y);
-    ctx.fillText('Traffic phase/settings apply on restart or new generation.', textX, line5Y);
-    ctx.fillText('Population/mutation apply on restart. Brain only uses localStorage.', textX, line6Y);
-    ctx.restore();
-  }
-
   private renderSensorStrip(
     ctx: CanvasRenderingContext2D,
     x: number,
@@ -459,20 +468,23 @@ export class Hud {
     const slotCount = Math.max(1, sensorReadings.length);
     const gap = 3;
     const slotWidth = (width - gap * (slotCount - 1)) / slotCount;
-    const slotHeight = SENSOR_STRIP_HEIGHT;
 
     for (let index = 0; index < slotCount; index += 1) {
       const reading = sensorReadings[index] ?? 0;
-      const fillHeight = slotHeight * reading;
+      const fillHeight = SENSOR_STRIP_HEIGHT * reading;
       const slotX = x + index * (slotWidth + gap);
-      const slotY = y;
 
       ctx.fillStyle = THEME.hud.sensorTrackColor;
-      ctx.fillRect(slotX, slotY, slotWidth, slotHeight);
+      ctx.fillRect(slotX, y, slotWidth, SENSOR_STRIP_HEIGHT);
       ctx.fillStyle = THEME.hud.sensorFillColor;
-      ctx.fillRect(slotX, slotY + (slotHeight - fillHeight), slotWidth, fillHeight);
+      ctx.fillRect(
+        slotX,
+        y + (SENSOR_STRIP_HEIGHT - fillHeight),
+        slotWidth,
+        fillHeight
+      );
       ctx.strokeStyle = THEME.hud.sensorBorderColor;
-      ctx.strokeRect(slotX + 0.5, slotY + 0.5, slotWidth - 1, slotHeight - 1);
+      ctx.strokeRect(slotX + 0.5, y + 0.5, slotWidth - 1, SENSOR_STRIP_HEIGHT - 1);
     }
   }
 }
@@ -507,6 +519,5 @@ function formatTrafficSettingsLabel(settings: TrafficSettings): string {
     settings.enabled ? 'ON' : 'OFF',
     settings.density.toUpperCase(),
     settings.speedPreset.toUpperCase(),
-    settings.spawnDistancePreset.toUpperCase(),
   ].join(' ');
 }

@@ -118,6 +118,7 @@ export class Game implements Updatable, Renderable {
     this.populationSpawnX = this.road.getLaneCenter(POPULATION_LANE_INDEX);
     this.populationSpawnY = 0;
     this.populationManager = new PopulationManager({
+      road: this.road,
       spawnX: this.populationSpawnX,
       spawnY: this.populationSpawnY,
       populationSize: this.controlState.selectedPopulationSize,
@@ -210,6 +211,7 @@ export class Game implements Updatable, Renderable {
     const ctx = this.context;
     const bestCar = this.populationManager.getBestCar();
     const populationStats = this.populationManager.getStats();
+    const steeringDebug = bestCar.getSteeringDebugSnapshot();
 
     ctx.clearRect(0, 0, this.width, this.height);
     this.renderBackground(ctx);
@@ -227,6 +229,9 @@ export class Game implements Updatable, Renderable {
       laneSpeedLabel: this.trafficManager.getLaneSpeedDebugLabel(),
       activeTrafficSettings: this.activeTrafficSettings,
       selectedTrafficSettings: this.selectedTrafficSettings,
+      steeringDebug,
+      laneCenterOffset: this.road.getNearestLaneCenterOffsetNormalized(bestCar.x),
+      edgeProximity: this.road.getBorderProximitySignal(bestCar.x),
       sensorHitCount: bestCar.getSensorHitCount(),
       sensorReadings: bestCar.getSensorReadings(),
       controlState: bestCar.getControlState(),

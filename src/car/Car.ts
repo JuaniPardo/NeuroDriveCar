@@ -5,7 +5,11 @@ import {
   type Point,
   type Segment,
 } from '../collision/geometry';
-import { Brain, BRAIN_OUTPUT_LABELS } from '../ai/Brain';
+import {
+  Brain,
+  BRAIN_OUTPUT_LABELS,
+  type BrainOutputDebugSnapshot,
+} from '../ai/Brain';
 import type { BrainSnapshot } from '../ai/Brain';
 import { Sensor, type SensorConfig } from '../sensors/Sensor';
 import { clamp, lerp } from '../utils/math';
@@ -25,8 +29,15 @@ const ENABLE_DEBUG_VECTORS = true;
 const ENABLE_COLLISION_DEBUG = true;
 const COLLISION_POINT_RADIUS = 4;
 const SENSOR_FORWARD_OFFSET_RATIO = 0.18;
-const DEFAULT_AI_STEERING_SMOOTHING = 0.12;
-const DEFAULT_AI_STEERING_STRENGTH = 0.55;
+const DEFAULT_AI_STEERING_SMOOTHING = 0.18;
+const DEFAULT_AI_STEERING_STRENGTH = 0.58;
+
+export interface SteeringDebugSnapshot {
+  leftOutput: number;
+  rightOutput: number;
+  rawSteerIntent: number;
+  smoothedSteer: number;
+}
 
 export interface AIControlConfig {
   steeringSmoothing: number;
@@ -373,6 +384,20 @@ export class Car {
 
   public getControlState(): Readonly<ReturnType<Controls['getState']>> {
     return this.controls.getState();
+  }
+
+  public getSteeringDebugSnapshot(): SteeringDebugSnapshot {
+    const outputDebug: BrainOutputDebugSnapshot =
+      this.brain?.getOutputDebugSnapshot() ?? {
+        leftOutput: Number(this.controls.left),
+        rightOutput: Number(this.controls.right),
+        rawSteerIntent: this.controls.steerIntent,
+      };
+
+    return {
+      ...outputDebug,
+      smoothedSteer: this.smoothedAiSteerIntent,
+    };
   }
 
   public setControlMode(controlMode: CarControlMode): void {

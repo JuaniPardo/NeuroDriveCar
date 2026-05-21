@@ -38,9 +38,17 @@ export interface BrainDecision extends ControlState {
   steerIntent: number;
 }
 
+export interface BrainOutputDebugSnapshot {
+  leftOutput: number;
+  rightOutput: number;
+  rawSteerIntent: number;
+}
+
 export class Brain {
   public readonly network: NeuralNetwork;
   public readonly lastOutputs: number[];
+  public readonly lastBinaryOutputs: number[];
+  private lastRawSteerIntent = 0;
 
   public constructor(inputCount: number, hiddenLayerSize = DEFAULT_HIDDEN_LAYER_SIZE) {
     this.network = new NeuralNetwork([
@@ -49,15 +57,17 @@ export class Brain {
       BRAIN_OUTPUT_LABELS.length,
     ]);
     this.lastOutputs = new Array(BRAIN_OUTPUT_LABELS.length).fill(0);
+    this.lastBinaryOutputs = new Array(BRAIN_OUTPUT_LABELS.length).fill(0);
   }
 
   public decide(sensorInputs: readonly number[]): BrainDecision {
-    const outputs = this.network.feedForward(sensorInputs);
+    const binaryOutputs = this.network.feedForward(sensorInputs);
     const outputLayer = this.network.layers[this.network.layers.length - 1];
-    const visualOutputs = outputLayer?.visualOutputs ?? outputs;
+    const visualOutputs = outputLayer?.visualOutputs ?? binaryOutputs;
 
     for (let index = 0; index < this.lastOutputs.length; index += 1) {
-      this.lastOutputs[index] = outputs[index];
+      this.lastOutputs[index] = visualOutputs[index] ?? 0;
+      this.lastBinaryOutputs[index] = binaryOutputs[index] ?? 0;
     }
 
     const forwardVisual = visualOutputs[0] ?? 0;
@@ -77,6 +87,7 @@ export class Brain {
     const right =
       rightVisual > leftVisual && rightVisual > STEERING_OUTPUT_THRESHOLD;
     const rawSteerIntent = rightVisual - leftVisual;
+    this.lastRawSteerIntent = rawSteerIntent;
     const steerIntent =
       Math.abs(rawSteerIntent) < STEER_INTENT_DEAD_ZONE ? 0 : rawSteerIntent;
 
@@ -128,6 +139,14 @@ export class Brain {
     }
 
     return true;
+  }
+
+  public getOutputDebugSnapshot(): BrainOutputDebugSnapshot {
+    return {
+      leftOutput: this.lastOutputs[1] ?? 0,
+      rightOutput: this.lastOutputs[2] ?? 0,
+      rawSteerIntent: this.lastRawSteerIntent,
+    };
   }
 }
 

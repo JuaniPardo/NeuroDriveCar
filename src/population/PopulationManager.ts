@@ -4,6 +4,7 @@ import { Car } from '../car/Car';
 import { DEFAULT_CAR_PHYSICS } from '../car/Physics';
 import type { Point, Segment } from '../collision/geometry';
 import { THEME } from '../utils/visualTheme';
+import { Road } from '../world/Road';
 
 const DEFAULT_POPULATION_SIZE = 25;
 const POPULATION_CAR_WIDTH = 42;
@@ -29,13 +30,20 @@ const FITNESS_FORWARD_SPEED_BONUS = 44;
 const FITNESS_EDGE_PROXIMITY_PENALTY = 76;
 const FITNESS_FRONT_OBSTACLE_PENALTY = 58;
 const FITNESS_SAFE_AVOIDANCE_REWARD = 90;
+const FITNESS_LANE_OFFSET_PENALTY = 0.18;
+const FITNESS_LANE_RECOVERY_REWARD = 220;
+const FITNESS_SUSTAINED_STEER_PENALTY = 52;
 const EDGE_DANGER_DISTANCE = 52;
 const FRONT_OBSTACLE_SIGNAL_THRESHOLD = 0.55;
 const FRONT_OBSTACLE_CLEAR_REWARD_DELTA = 0.16;
+const STRONG_STEER_THRESHOLD = 0.34;
+const STRONG_STEER_GRACE_SECONDS = 0.45;
+const LANE_RECOVERY_EPSILON = 1.5;
 
 export type PopulationSource = 'random' | 'saved';
 
 export interface PopulationManagerOptions {
+  road: Road;
   spawnX: number;
   spawnY: number;
   populationSize?: number;
@@ -61,6 +69,7 @@ export interface PopulationStats {
 }
 
 export class PopulationManager {
+  private readonly road: Road;
   private readonly spawnX: number;
   private readonly spawnY: number;
   private populationSize: number;
@@ -75,6 +84,12 @@ export class PopulationManager {
   private readonly fitnessByCar: number[] = [];
   private readonly forwardSpeedByCar: number[] = [];
   private readonly edgeExposureByCar: number[] = [];
+  private readonly laneOffsetByCar: number[] = [];
+  private readonly laneRecoveryRewardByCar: number[] = [];
+  private readonly sustainedSteerTimeByCar: number[] = [];
+  private readonly sustainedSteerPenaltyByCar: number[] = [];
+  private readonly previousLaneOffsetByCar: number[] = [];
+  private readonly previousSteerSignByCar: number[] = [];
   private readonly frontObstaclePenaltyByCar: number[] = [];
   private readonly obstacleAvoidanceRewardByCar: number[] = [];
   private readonly previousFrontObstacleSignalByCar: number[] = [];
@@ -84,6 +99,7 @@ export class PopulationManager {
   private populationSource: PopulationSource = 'random';
 
   public constructor(options: PopulationManagerOptions) {
+    this.road = options.road;
     this.spawnX = options.spawnX;
     this.spawnY = options.spawnY;
     this.populationSize = Math.max(1, options.populationSize ?? DEFAULT_POPULATION_SIZE);
@@ -161,6 +177,12 @@ export class PopulationManager {
       this.fitnessByCar.push(0);
       this.forwardSpeedByCar.push(0);
       this.edgeExposureByCar.push(0);
+      this.laneOffsetByCar.push(0);
+      this.laneRecoveryRewardByCar.push(0);
+      this.sustainedSteerTimeByCar.push(0);
+      this.sustainedSteerPenaltyByCar.push(0);
+      this.previousLaneOffsetByCar.push(0);
+      this.previousSteerSignByCar.push(0);
       this.frontObstaclePenaltyByCar.push(0);
       this.obstacleAvoidanceRewardByCar.push(0);
       this.previousFrontObstacleSignalByCar.push(0);
@@ -185,9 +207,11 @@ export class PopulationManager {
       car.update(deltaTimeSeconds, roadBorders);
       this.survivalTimeByCar[index] += deltaTimeSeconds;
       this.lateralOffsetByCar[index] +=
-        Math.abs(car.x - this.spawnX) * deltaTimeSeconds;
+        Math.abs(this.road.getNearestLaneCenterOffset(car.x)) * deltaTimeSeconds;
       this.steeringEffortByCar[index] +=
         Math.abs(car.steeringAngle) * deltaTimeSeconds;
+      const laneOffset = Math.abs(this.road.getNearestLaneCenterOffset(car.x));
+      this.laneOffsetByCar[index] += laneOffset * deltaTimeSeconds;
 
       if (Math.abs(car.speed) < LOW_SPEED_THRESHOLD) {
         this.lowSpeedTimeByCar[index] += deltaTimeSeconds;
@@ -246,6 +270,8 @@ export class PopulationManager {
 
       const edgeDanger = this.getEdgeDangerSignal(car, roadBorders);
       this.edgeExposureByCar[index] += edgeDanger * deltaTimeSeconds;
+      this.updateLaneRecoverySignal(index, car, deltaTimeSeconds);
+      this.updateSustainedSteeringSignal(index, car, deltaTimeSeconds);
 
       const frontObstacleSignal = getFrontObstacleSignal(car.getSensorReadings());
 
@@ -479,6 +505,12 @@ export class PopulationManager {
       this.forwardSpeedByCar[index] * FITNESS_FORWARD_SPEED_BONUS;
     const edgePenalty =
       this.edgeExposureByCar[index] * FITNESS_EDGE_PROXIMITY_PENALTY;
+    const laneOffsetPenalty =
+      this.laneOffsetByCar[index] * FITNESS_LANE_OFFSET_PENALTY;
+    const laneRecoveryReward =
+      this.laneRecoveryRewardByCar[index] * FITNESS_LANE_RECOVERY_REWARD;
+    const sustainedSteerPenalty =
+      this.sustainedSteerPenaltyByCar[index] * FITNESS_SUSTAINED_STEER_PENALTY;
     const frontObstaclePenalty =
       this.frontObstaclePenaltyByCar[index] * FITNESS_FRONT_OBSTACLE_PENALTY;
     const obstacleAvoidanceReward =
@@ -488,12 +520,15 @@ export class PopulationManager {
       progress +
       survivalBonus -
       edgePenalty -
+      laneOffsetPenalty -
       earlyCrashPenalty -
       frontObstaclePenalty -
       lateralOffsetPenalty -
       steeringPenalty -
+      sustainedSteerPenalty -
       stagnationPenalty +
       forwardSpeedBonus +
+      laneRecoveryReward +
       obstacleAvoidanceReward
     );
   }
@@ -528,6 +563,12 @@ export class PopulationManager {
     this.fitnessByCar.length = 0;
     this.forwardSpeedByCar.length = 0;
     this.edgeExposureByCar.length = 0;
+    this.laneOffsetByCar.length = 0;
+    this.laneRecoveryRewardByCar.length = 0;
+    this.sustainedSteerTimeByCar.length = 0;
+    this.sustainedSteerPenaltyByCar.length = 0;
+    this.previousLaneOffsetByCar.length = 0;
+    this.previousSteerSignByCar.length = 0;
     this.frontObstaclePenaltyByCar.length = 0;
     this.obstacleAvoidanceRewardByCar.length = 0;
     this.previousFrontObstacleSignalByCar.length = 0;
@@ -544,6 +585,61 @@ export class PopulationManager {
     }
 
     return Math.max(0, 1 - nearestBorderDistance / EDGE_DANGER_DISTANCE);
+  }
+
+  private updateLaneRecoverySignal(
+    index: number,
+    car: Car,
+    deltaTimeSeconds: number
+  ): void {
+    const laneOffset = Math.abs(this.road.getNearestLaneCenterOffset(car.x));
+    const previousLaneOffset = this.previousLaneOffsetByCar[index];
+    const isRecoveringTowardCenter =
+      previousLaneOffset - laneOffset > LANE_RECOVERY_EPSILON &&
+      this.progressByCar[index] > 0 &&
+      car.getForwardSpeedRatio() > 0.22;
+
+    if (isRecoveringTowardCenter) {
+      this.laneRecoveryRewardByCar[index] +=
+        (previousLaneOffset - laneOffset) * deltaTimeSeconds;
+    }
+
+    this.previousLaneOffsetByCar[index] = laneOffset;
+  }
+
+  private updateSustainedSteeringSignal(
+    index: number,
+    car: Car,
+    deltaTimeSeconds: number
+  ): void {
+    const steeringDebug = car.getSteeringDebugSnapshot();
+    const steerMagnitude = Math.abs(steeringDebug.smoothedSteer);
+    const steerSign =
+      steerMagnitude < 0.001 ? 0 : Math.sign(steeringDebug.smoothedSteer);
+    const previousSteerSign = this.previousSteerSignByCar[index];
+
+    if (steerMagnitude < STRONG_STEER_THRESHOLD || steerSign === 0) {
+      this.sustainedSteerTimeByCar[index] = Math.max(
+        0,
+        this.sustainedSteerTimeByCar[index] - deltaTimeSeconds * 2
+      );
+      this.previousSteerSignByCar[index] = steerSign;
+      return;
+    }
+
+    if (previousSteerSign !== 0 && previousSteerSign !== steerSign) {
+      this.sustainedSteerTimeByCar[index] = 0;
+    } else {
+      this.sustainedSteerTimeByCar[index] += deltaTimeSeconds;
+    }
+
+    if (this.sustainedSteerTimeByCar[index] > STRONG_STEER_GRACE_SECONDS) {
+      this.sustainedSteerPenaltyByCar[index] +=
+        (this.sustainedSteerTimeByCar[index] - STRONG_STEER_GRACE_SECONDS) *
+        deltaTimeSeconds;
+    }
+
+    this.previousSteerSignByCar[index] = steerSign;
   }
 }
 
