@@ -1,6 +1,14 @@
 :root {
   color-scheme: dark;
   font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Code", monospace;
+  --panel-border: rgba(127, 224, 196, 0.22);
+  --panel-fill-top: rgba(5, 13, 16, 0.95);
+  --panel-fill-bottom: rgba(3, 8, 10, 0.93);
+  --panel-text: #d7e5de;
+  --panel-muted: #8fa89e;
+  --panel-bright: #edf7f2;
+  --panel-accent: #8fe1ff;
+  --panel-accent-strong: rgba(143, 225, 255, 0.78);
   background:
     radial-gradient(circle at top, rgba(42, 72, 66, 0.28), transparent 42%),
     linear-gradient(180deg, #071013 0%, #030608 100%);
@@ -39,10 +47,10 @@ canvas {
   bottom: 16px;
   z-index: 2;
   width: min(360px, calc(100vw - 32px));
-  padding: 14px;
-  border: 1px solid rgba(127, 224, 196, 0.28);
+  padding: 16px;
+  border: 1px solid var(--panel-border);
   background:
-    linear-gradient(180deg, rgba(5, 13, 16, 0.94) 0%, rgba(3, 8, 10, 0.92) 100%);
+    linear-gradient(180deg, var(--panel-fill-top) 0%, var(--panel-fill-bottom) 100%);
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
   backdrop-filter: blur(8px);
 }
@@ -57,7 +65,7 @@ canvas {
 .controls-panel__label,
 .controls-panel__hint {
   margin: 0;
-  color: #8fa89e;
+  color: var(--panel-muted);
   font-size: 10px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -66,8 +74,8 @@ canvas {
 .controls-panel__title {
   margin: 4px 0 0;
   font-size: 18px;
-  font-weight: 500;
-  color: #edf7f2;
+  font-weight: 600;
+  color: var(--panel-bright);
 }
 
 .controls-panel__actions,
@@ -90,7 +98,7 @@ canvas {
 .controls-panel__select {
   border: 1px solid rgba(127, 224, 196, 0.22);
   background: rgba(11, 25, 28, 0.96);
-  color: #d7e5de;
+  color: var(--panel-text);
   font: inherit;
 }
 
@@ -120,7 +128,7 @@ canvas {
 }
 
 .controls-panel__speed-button--active {
-  border-color: rgba(143, 225, 255, 0.78);
+  border-color: var(--panel-accent-strong);
   background: rgba(17, 58, 66, 0.96);
   color: #f2fbff;
 }
@@ -143,14 +151,14 @@ canvas {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  color: #edf7f2;
+  color: var(--panel-bright);
   font-size: 11px;
 }
 
 .controls-panel__feedback {
   min-height: 32px;
   margin-top: 6px;
-  color: #8fe1ff;
+  color: var(--panel-accent);
   font-size: 11px;
   line-height: 1.45;
 }

@@ -1,6 +1,7 @@
 import { Car, type CarAppearance } from '../car/Car';
 import { DEFAULT_CAR_PHYSICS } from '../car/Physics';
 import type { Point, Segment } from '../collision/geometry';
+import { THEME } from '../utils/visualTheme';
 import { Road } from '../world/Road';
 
 const MIN_TRAFFIC_INITIAL_GAP = 120;
@@ -20,14 +21,7 @@ const TRAFFIC_SPEED_BY_LANE = [
 ] as const;
 
 const TRAFFIC_APPEARANCE: Partial<CarAppearance> = {
-  bodyColor: '#d19f57',
-  cabinColor: '#2a1d12',
-  outlineColor: '#ffe8c4',
-  frontMarkerColor: '#fff2d0',
-  frontLightColor: '#fff1ba',
-  rearLightColor: '#ff826c',
-  rearBumperColor: '#6d3a2d',
-  debugPolygonColor: 'rgba(233, 187, 108, 0.8)',
+  ...THEME.car.traffic,
 };
 
 const TRAFFIC_PATTERN: readonly number[][] = [

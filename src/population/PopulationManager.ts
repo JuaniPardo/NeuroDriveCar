@@ -3,18 +3,15 @@ import { cloneBrainGenome, createMutatedGenome } from '../ai/mutation';
 import { Car } from '../car/Car';
 import { DEFAULT_CAR_PHYSICS } from '../car/Physics';
 import type { Point, Segment } from '../collision/geometry';
+import { THEME } from '../utils/visualTheme';
 
 const DEFAULT_POPULATION_SIZE = 25;
 const POPULATION_CAR_WIDTH = 42;
 const POPULATION_CAR_HEIGHT = 74;
-const NON_BEST_CAR_OPACITY = 0.52;
-const DAMAGED_CAR_OPACITY = 0.24;
-const BEST_CAR_RING_COLOR = 'rgba(143, 225, 255, 0.95)';
-const BEST_CAR_LABEL_COLOR = 'rgba(223, 245, 255, 0.92)';
+const NON_BEST_CAR_OPACITY = 0.26;
+const DAMAGED_CAR_OPACITY = 0.12;
 const BEST_CAR_RING_RADIUS_PADDING = 16;
 const BEST_CAR_LABEL_OFFSET = 54;
-const NON_BEST_RING_COLOR = 'rgba(109, 200, 255, 0.38)';
-const AGENT_MARKER_COLOR = 'rgba(143, 225, 255, 0.82)';
 const AGENT_MARKER_RADIUS = 3.5;
 const DEFAULT_MUTATION_AMOUNT = 0.18;
 const STALL_PROGRESS_EPSILON = 0.25;
@@ -279,13 +276,18 @@ export class PopulationManager {
     const radius = Math.max(car.width, car.height) * 0.5 + BEST_CAR_RING_RADIUS_PADDING;
 
     ctx.save();
-    ctx.strokeStyle = BEST_CAR_RING_COLOR;
+    ctx.fillStyle = THEME.car.emphasis.bestHaloFillColor;
+    ctx.beginPath();
+    ctx.arc(car.x, car.y, radius + 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = THEME.car.emphasis.bestHaloColor;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(car.x, car.y, radius, 0, Math.PI * 2);
     ctx.stroke();
 
-    ctx.fillStyle = BEST_CAR_LABEL_COLOR;
+    ctx.fillStyle = THEME.car.emphasis.bestLabelColor;
     ctx.font = '11px "SF Mono", Monaco, monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
@@ -296,7 +298,7 @@ export class PopulationManager {
   private renderGhostHighlight(ctx: CanvasRenderingContext2D, car: Car): void {
     const radius = Math.max(car.width, car.height) * 0.5 + 10;
 
-    ctx.strokeStyle = NON_BEST_RING_COLOR;
+    ctx.strokeStyle = THEME.car.emphasis.ghostRingColor;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.arc(car.x, car.y, radius, 0, Math.PI * 2);
@@ -313,7 +315,7 @@ export class PopulationManager {
     const markerX = car.x + Math.cos(angle) * radius;
     const markerY = car.y + Math.sin(angle) * radius;
 
-    ctx.fillStyle = AGENT_MARKER_COLOR;
+    ctx.fillStyle = THEME.car.emphasis.agentMarkerColor;
     ctx.beginPath();
     ctx.arc(markerX, markerY, AGENT_MARKER_RADIUS, 0, Math.PI * 2);
     ctx.fill();

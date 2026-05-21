@@ -1,4 +1,5 @@
 import type { Segment } from '../collision/geometry';
+import { THEME } from '../utils/visualTheme';
 import { clampLaneIndex, Lane } from './Lane';
 
 const DEFAULT_LANE_COUNT = 3;
@@ -9,7 +10,6 @@ const DASH_LENGTH = 36;
 const DASH_GAP = 28;
 const DASH_CYCLE_LENGTH = DASH_LENGTH + DASH_GAP;
 const COLLISION_EXTENT_Y = 1_000_000;
-const DEBUG_BORDER_COLOR = 'rgba(127, 224, 196, 0.24)';
 
 export class Road {
   public readonly x: number;
@@ -71,14 +71,26 @@ export class Road {
 
     ctx.save();
 
-    ctx.fillStyle = '#050b0e';
+    ctx.fillStyle = THEME.road.shoulderColor;
     ctx.fillRect(shoulderLeft, segmentTop, shoulderRight - shoulderLeft, segmentHeight);
 
-    ctx.fillStyle = '#11181d';
+    ctx.strokeStyle = THEME.road.shoulderEdgeColor;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(shoulderLeft + ROAD_SHOULDER_WIDTH * 0.5, segmentTop);
+    ctx.lineTo(shoulderLeft + ROAD_SHOULDER_WIDTH * 0.5, segmentBottom);
+    ctx.moveTo(shoulderRight - ROAD_SHOULDER_WIDTH * 0.5, segmentTop);
+    ctx.lineTo(shoulderRight - ROAD_SHOULDER_WIDTH * 0.5, segmentBottom);
+    ctx.stroke();
+
+    ctx.fillStyle = THEME.road.asphaltColor;
     ctx.fillRect(this.left, segmentTop, this.width, segmentHeight);
 
-    ctx.strokeStyle = '#a6c0b4';
-    ctx.lineWidth = 2;
+    ctx.fillStyle = THEME.road.asphaltInsetColor;
+    ctx.fillRect(this.left + 8, segmentTop, this.width - 16, segmentHeight);
+
+    ctx.strokeStyle = THEME.road.laneGlowColor;
+    ctx.lineWidth = 5;
     ctx.setLineDash([DASH_LENGTH, DASH_GAP]);
     ctx.lineDashOffset = getStableDashOffset(visibleTop);
 
@@ -91,9 +103,41 @@ export class Road {
       ctx.stroke();
     }
 
+    ctx.strokeStyle = THEME.road.laneDashColor;
+    ctx.lineWidth = 2;
+
+    for (let laneIndex = 1; laneIndex < this.laneCount; laneIndex += 1) {
+      const separatorX = this.left + laneIndex * this.laneWidth;
+
+      ctx.beginPath();
+      ctx.moveTo(separatorX, segmentTop);
+      ctx.lineTo(separatorX, segmentBottom);
+      ctx.stroke();
+    }
+
     ctx.setLineDash([]);
-    ctx.strokeStyle = '#ebfff4';
+    ctx.strokeStyle = THEME.road.borderGlowColor;
+    ctx.lineWidth = BORDER_WIDTH + 5;
+
+    for (const borderX of this.borders) {
+      ctx.beginPath();
+      ctx.moveTo(borderX, segmentTop);
+      ctx.lineTo(borderX, segmentBottom);
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = THEME.road.borderColor;
     ctx.lineWidth = BORDER_WIDTH;
+
+    for (const borderX of this.borders) {
+      ctx.beginPath();
+      ctx.moveTo(borderX, segmentTop);
+      ctx.lineTo(borderX, segmentBottom);
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = THEME.road.borderInnerColor;
+    ctx.lineWidth = 1;
 
     for (const borderX of this.borders) {
       ctx.beginPath();
@@ -111,7 +155,7 @@ export class Road {
     visibleBottom: number
   ): void {
     ctx.save();
-    ctx.strokeStyle = DEBUG_BORDER_COLOR;
+    ctx.strokeStyle = THEME.road.debugBorderColor;
     ctx.lineWidth = 1;
     ctx.setLineDash([14, 10]);
 

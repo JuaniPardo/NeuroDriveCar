@@ -6,12 +6,9 @@ import {
   type Segment,
 } from '../collision/geometry';
 import { lerp } from '../utils/math';
+import { FONT_MONO, THEME } from '../utils/visualTheme';
 import { createRay, type Ray, updateRay } from './Ray';
 
-const SENSOR_RAY_COLOR = 'rgba(135, 255, 224, 0.92)';
-const SENSOR_BLOCKED_RAY_COLOR = 'rgba(255, 122, 122, 0.9)';
-const SENSOR_HIT_COLOR = '#ffe08f';
-const SENSOR_LABEL_COLOR = 'rgba(223, 242, 233, 0.88)';
 const SENSOR_READING_DECIMALS = 2;
 const SENSOR_ANGLE_LABEL_OFFSET = 16;
 const SENSOR_VALUE_LABEL_OFFSET = 12;
@@ -91,29 +88,38 @@ export class Sensor {
   public render(ctx: CanvasRenderingContext2D): void {
     ctx.save();
     ctx.lineWidth = 2;
-    ctx.font = '10px "SF Mono", Monaco, monospace';
+    ctx.font = `10px ${FONT_MONO}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+
+    const sensorOrigin = this.rays[0]?.start;
+
+    if (sensorOrigin !== undefined) {
+      ctx.fillStyle = THEME.sensor.originColor;
+      ctx.beginPath();
+      ctx.arc(sensorOrigin.x, sensorOrigin.y, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     for (let index = 0; index < this.rays.length; index += 1) {
       const ray = this.rays[index];
       const reading = this.readings[index];
       const visibleEnd = reading === null ? ray.end : reading;
 
-      ctx.strokeStyle = SENSOR_RAY_COLOR;
+      ctx.strokeStyle = THEME.sensor.activeRayColor;
       ctx.beginPath();
       ctx.moveTo(ray.start.x, ray.start.y);
       ctx.lineTo(visibleEnd.x, visibleEnd.y);
       ctx.stroke();
 
       if (reading !== null) {
-        ctx.strokeStyle = SENSOR_BLOCKED_RAY_COLOR;
+        ctx.strokeStyle = THEME.sensor.blockedRayColor;
         ctx.beginPath();
         ctx.moveTo(reading.x, reading.y);
         ctx.lineTo(ray.end.x, ray.end.y);
         ctx.stroke();
 
-        ctx.fillStyle = SENSOR_HIT_COLOR;
+        ctx.fillStyle = THEME.sensor.hitPointColor;
         ctx.beginPath();
         ctx.arc(
           reading.x,
@@ -254,7 +260,7 @@ export class Sensor {
     const valueLabelY =
       visibleEnd.y + directionY * SENSOR_VALUE_LABEL_OFFSET;
 
-    ctx.fillStyle = SENSOR_LABEL_COLOR;
+    ctx.fillStyle = THEME.sensor.labelColor;
     ctx.fillText(
       `${Math.round(((ray.angle * 180) / Math.PI) % 360)}deg`,
       angleLabelX,

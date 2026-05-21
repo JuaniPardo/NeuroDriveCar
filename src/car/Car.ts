@@ -8,6 +8,7 @@ import {
 import { Brain, BRAIN_OUTPUT_LABELS } from '../ai/Brain';
 import type { BrainSnapshot } from '../ai/Brain';
 import { Sensor, type SensorConfig } from '../sensors/Sensor';
+import { THEME } from '../utils/visualTheme';
 import { Controls } from './Controls';
 import {
   DEFAULT_CAR_PHYSICS,
@@ -17,22 +18,6 @@ import {
   updateSpeed,
 } from './Physics';
 
-const CAR_BODY_COLOR = '#7fe0c4';
-const DAMAGED_CAR_BODY_COLOR = '#7a3a3a';
-const CAR_CABIN_COLOR = '#163039';
-const DAMAGED_CAR_CABIN_COLOR = '#261315';
-const CAR_OUTLINE_COLOR = '#ecfff7';
-const DAMAGED_CAR_OUTLINE_COLOR = '#ffc0c0';
-const FRONT_MARKER_COLOR = '#f4fff9';
-const FRONT_LIGHT_COLOR = '#f8ffcc';
-const REAR_LIGHT_COLOR = '#ff6b6b';
-const REAR_BUMPER_COLOR = '#5c1f28';
-const AI_CAR_BODY_COLOR = '#6dc8ff';
-const AI_CAR_CABIN_COLOR = '#112636';
-const AI_CAR_OUTLINE_COLOR = '#def5ff';
-const AI_FRONT_MARKER_COLOR = '#eefbff';
-const AI_FRONT_LIGHT_COLOR = '#d3f6ff';
-const AI_REAR_BUMPER_COLOR = '#1c3e57';
 const DEBUG_VECTOR_SPEED_SCALE = 0.28;
 const DEBUG_FORWARD_VECTOR_LENGTH = 34;
 const ENABLE_DEBUG_VECTORS = true;
@@ -69,17 +54,7 @@ export interface CarRenderOptions {
 }
 
 const DEFAULT_CAR_APPEARANCE: CarAppearance = {
-  bodyColor: CAR_BODY_COLOR,
-  damagedBodyColor: DAMAGED_CAR_BODY_COLOR,
-  cabinColor: CAR_CABIN_COLOR,
-  damagedCabinColor: DAMAGED_CAR_CABIN_COLOR,
-  outlineColor: CAR_OUTLINE_COLOR,
-  damagedOutlineColor: DAMAGED_CAR_OUTLINE_COLOR,
-  frontMarkerColor: FRONT_MARKER_COLOR,
-  frontLightColor: FRONT_LIGHT_COLOR,
-  rearLightColor: REAR_LIGHT_COLOR,
-  rearBumperColor: REAR_BUMPER_COLOR,
-  debugPolygonColor: 'rgba(127, 224, 196, 0.75)',
+  ...THEME.car.player,
 };
 
 export class Car {
@@ -100,7 +75,7 @@ export class Car {
   private readonly physics: CarPhysicsConfig;
   private controlMode: CarControlMode;
   private readonly trafficSpeed: number;
-  private readonly baseAppearance: CarAppearance;
+  private readonly appearanceOverrides: Partial<CarAppearance>;
   private appearance: CarAppearance;
 
   public constructor(
@@ -118,10 +93,7 @@ export class Car {
     this.physics = physics;
     this.controlMode = options.controlMode ?? 'player';
     this.trafficSpeed = options.trafficSpeed ?? 0;
-    this.baseAppearance = {
-      ...DEFAULT_CAR_APPEARANCE,
-      ...options.appearance,
-    };
+    this.appearanceOverrides = options.appearance ?? {};
     this.appearance = this.getAppearanceForMode(this.controlMode);
     this.controls = new Controls();
     this.polygon = createCarPolygon();
@@ -235,6 +207,17 @@ export class Car {
     ctx.fill();
     ctx.stroke();
 
+    ctx.fillStyle = THEME.car.emphasis.windshieldColor;
+    ctx.beginPath();
+    ctx.roundRect(
+      -this.width * 0.24,
+      -this.height * 0.36,
+      this.width * 0.48,
+      this.height * 0.16,
+      5
+    );
+    ctx.fill();
+
     ctx.fillStyle = this.damaged
       ? this.appearance.damagedCabinColor
       : this.appearance.cabinColor;
@@ -289,12 +272,23 @@ export class Car {
       this.height * 0.08
     );
 
-    ctx.strokeStyle = 'rgba(236, 255, 247, 0.42)';
+    ctx.strokeStyle = THEME.car.emphasis.roofLineColor;
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(0, -this.height * 0.34);
     ctx.lineTo(0, -this.height * 0.18);
     ctx.stroke();
+
+    if (this.damaged) {
+      ctx.strokeStyle = THEME.car.emphasis.damageStripeColor;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(-this.width * 0.22, -this.height * 0.14);
+      ctx.lineTo(this.width * 0.22, this.height * 0.14);
+      ctx.moveTo(this.width * 0.22, -this.height * 0.14);
+      ctx.lineTo(-this.width * 0.22, this.height * 0.14);
+      ctx.stroke();
+    }
 
     if (renderDebug && ENABLE_DEBUG_VECTORS) {
       this.renderDebugVectors(ctx);
@@ -561,19 +555,23 @@ export class Car {
   }
 
   private getAppearanceForMode(controlMode: CarControlMode): CarAppearance {
+    if (controlMode === 'traffic') {
+      return {
+        ...THEME.car.traffic,
+        ...this.appearanceOverrides,
+      };
+    }
+
     if (controlMode !== 'ai') {
-      return { ...this.baseAppearance };
+      return {
+        ...DEFAULT_CAR_APPEARANCE,
+        ...this.appearanceOverrides,
+      };
     }
 
     return {
-      ...this.baseAppearance,
-      bodyColor: AI_CAR_BODY_COLOR,
-      cabinColor: AI_CAR_CABIN_COLOR,
-      outlineColor: AI_CAR_OUTLINE_COLOR,
-      frontMarkerColor: AI_FRONT_MARKER_COLOR,
-      frontLightColor: AI_FRONT_LIGHT_COLOR,
-      rearBumperColor: AI_REAR_BUMPER_COLOR,
-      debugPolygonColor: 'rgba(109, 200, 255, 0.82)',
+      ...THEME.car.ai,
+      ...this.appearanceOverrides,
     };
   }
 }

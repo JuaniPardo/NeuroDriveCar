@@ -1,15 +1,6 @@
 import type { BrainSnapshot } from '../ai/Brain';
 import { clamp, lerp, remapClamped } from '../utils/math';
-
-const PANEL_BACKGROUND_COLOR = 'rgba(5, 15, 19, 0.92)';
-const PANEL_BORDER_COLOR = 'rgba(127, 224, 196, 0.24)';
-const PANEL_TITLE_COLOR = '#dceee5';
-const PANEL_SUBTITLE_COLOR = '#8ca79b';
-const NODE_BORDER_COLOR = 'rgba(220, 238, 229, 0.3)';
-const OUTPUT_LABEL_COLOR = '#dff4eb';
-const INACTIVE_CONNECTION_COLOR = 'rgba(64, 87, 84, 0.16)';
-const POSITIVE_CONNECTION_COLOR = 'rgba(135, 255, 224, 1)';
-const NEGATIVE_CONNECTION_COLOR = 'rgba(255, 122, 122, 1)';
+import { FONT_MONO, THEME } from '../utils/visualTheme';
 
 interface LayerRenderData {
   activations: readonly number[];
@@ -34,15 +25,15 @@ export class NeuralVisualizer {
     this.renderPanel(ctx, x, y, width, height);
 
     ctx.save();
-    ctx.font = '11px "SF Mono", Monaco, monospace';
+    ctx.font = `11px ${FONT_MONO}`;
     ctx.textBaseline = 'top';
-    ctx.fillStyle = PANEL_TITLE_COLOR;
+    ctx.fillStyle = THEME.neural.panelTitleColor;
     ctx.fillText('NEURAL VISUALIZER', x + 16, y + 14);
-    ctx.fillStyle = PANEL_SUBTITLE_COLOR;
+    ctx.fillStyle = THEME.neural.panelSubtitleColor;
     ctx.fillText('inputs / hidden / outputs', x + 16, y + 32);
 
     if (snapshot === null) {
-      ctx.fillStyle = OUTPUT_LABEL_COLOR;
+      ctx.fillStyle = THEME.neural.outputLabelColor;
       ctx.fillText('No brain data available.', x + 16, y + 62);
       ctx.restore();
       return;
@@ -102,7 +93,7 @@ export class NeuralVisualizer {
       const layer = layers[layerIndex];
       const nodes = layerNodePositions[layerIndex];
 
-      ctx.fillStyle = PANEL_SUBTITLE_COLOR;
+      ctx.fillStyle = THEME.neural.panelSubtitleColor;
       ctx.textAlign = 'center';
       ctx.fillText(layer.title, layerXs[layerIndex], layoutTop - 22);
 
@@ -127,8 +118,8 @@ export class NeuralVisualizer {
     height: number
   ): void {
     ctx.save();
-    ctx.fillStyle = PANEL_BACKGROUND_COLOR;
-    ctx.strokeStyle = PANEL_BORDER_COLOR;
+    ctx.fillStyle = THEME.hud.panelBackgroundStrong;
+    ctx.strokeStyle = THEME.hud.panelBorder;
     ctx.lineWidth = 1;
     ctx.fillRect(x, y, width, height);
     ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
@@ -177,11 +168,11 @@ export class NeuralVisualizer {
 
     ctx.strokeStyle =
       influence < 0.02
-        ? INACTIVE_CONNECTION_COLOR
+        ? THEME.neural.inactiveConnectionColor
         : weight >= 0
-          ? withAlpha(POSITIVE_CONNECTION_COLOR, alpha)
-          : withAlpha(NEGATIVE_CONNECTION_COLOR, alpha);
-    ctx.lineWidth = remapClamped(influence, 0, 1, 1, 2.8);
+          ? withAlpha(THEME.neural.positiveConnectionColor, alpha)
+          : withAlpha(THEME.neural.negativeConnectionColor, alpha);
+    ctx.lineWidth = remapClamped(influence, 0, 1, 1, 3.2);
     ctx.beginPath();
     ctx.moveTo(source.x, source.y);
     ctx.lineTo(target.x, target.y);
@@ -197,26 +188,34 @@ export class NeuralVisualizer {
     const radius = label === null ? 9 : 11;
     const intensity = clamp(activation, 0, 1);
 
-    ctx.fillStyle = withAlpha('#0d1b20', 0.96);
+    ctx.fillStyle = THEME.neural.nodeHaloColor;
+    ctx.beginPath();
+    ctx.arc(node.x, node.y, radius + 6, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = withAlpha(THEME.neural.nodeWellColor, 0.96);
     ctx.beginPath();
     ctx.arc(node.x, node.y, radius + 2, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = withAlpha('#8ffff0', remapClamped(intensity, 0, 1, 0.1, 0.95));
+    ctx.fillStyle = withAlpha(
+      label === null ? THEME.neural.nodeCoreColor : THEME.neural.outputNodeCoreColor,
+      remapClamped(intensity, 0, 1, 0.16, 0.98)
+    );
     ctx.beginPath();
     ctx.arc(node.x, node.y, radius, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.strokeStyle = NODE_BORDER_COLOR;
+    ctx.strokeStyle = THEME.neural.nodeBorderColor;
     ctx.lineWidth = 1.25;
     ctx.beginPath();
     ctx.arc(node.x, node.y, radius, 0, Math.PI * 2);
     ctx.stroke();
 
-    ctx.fillStyle = OUTPUT_LABEL_COLOR;
+    ctx.fillStyle = THEME.neural.outputLabelColor;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = label === null ? '9px "SF Mono", Monaco, monospace' : '10px "SF Mono", Monaco, monospace';
+    ctx.font = label === null ? `9px ${FONT_MONO}` : `10px ${FONT_MONO}`;
     ctx.fillText(label ?? activation.toFixed(2), node.x, node.y);
   }
 }

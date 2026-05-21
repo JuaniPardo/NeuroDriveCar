@@ -8,25 +8,14 @@ import {
   type SimulationSpeedOption,
 } from '../game/simulationControls';
 import type { PopulationSource } from '../population/PopulationManager';
+import { FONT_MONO, THEME } from '../utils/visualTheme';
 import { NeuralVisualizer } from './NeuralVisualizer';
 
-const PANEL_BACKGROUND_COLOR = 'rgba(4, 12, 15, 0.84)';
-const PANEL_BORDER_COLOR = 'rgba(127, 224, 196, 0.28)';
-const PANEL_TEXT_COLOR = '#d7e5de';
-const PANEL_MUTED_TEXT_COLOR = '#9db7aa';
-const PANEL_ALERT_COLOR = '#ff8a75';
-const PANEL_OK_COLOR = '#cde7d5';
-const PANEL_AI_COLOR = '#8fe1ff';
-const PANEL_TITLE = 'NEURODRIVECAR / MVP 11';
-const SENSOR_STRIP_HEIGHT = 16;
-const STATUS_LINE_HEIGHT = 22;
-const STATUS_TOP_PADDING = 14;
-const STATUS_SECTION_GAP = 10;
-const INSTRUCTIONS_TITLE_COLOR = '#cde7d5';
-const INSTRUCTIONS_TEXT_COLOR = '#9db7aa';
-const VALUE_TEXT_COLOR = '#f1f7f4';
-const SECTION_LABEL_COLOR = '#7f9b90';
-const SECTION_DIVIDER_COLOR = 'rgba(127, 224, 196, 0.1)';
+const PANEL_TITLE = 'NEURODRIVECAR / MVP 12';
+const SENSOR_STRIP_HEIGHT = 18;
+const STATUS_LINE_HEIGHT = 24;
+const STATUS_TOP_PADDING = 16;
+const STATUS_SECTION_GAP = 12;
 
 export interface HudRenderData {
   width: number;
@@ -73,9 +62,9 @@ export class Hud {
     const statusPanelX = margin;
     const statusPanelY = margin;
     const statusPanelWidth = Math.min(340, Math.max(304, data.width * 0.26));
-    const statusPanelHeight = 676;
+    const statusPanelHeight = 700;
     const instructionsPanelY = statusPanelY + statusPanelHeight + 12;
-    const instructionsPanelHeight = 132;
+    const instructionsPanelHeight = 140;
     const neuralPanelWidth = Math.min(420, Math.max(320, data.width * 0.22));
     const neuralPanelHeight = Math.min(360, Math.max(300, data.height * 0.34));
     const neuralPanelX = data.width - neuralPanelWidth - margin;
@@ -115,24 +104,25 @@ export class Hud {
     data: HudRenderData
   ): void {
     const statusLabel = data.damaged ? 'DAMAGED' : 'ACTIVE';
-    const statusColor = data.damaged ? PANEL_ALERT_COLOR : PANEL_OK_COLOR;
-    const controlModeColor = data.controlMode === 'ai' ? PANEL_AI_COLOR : PANEL_TEXT_COLOR;
-    const textX = x + 12;
-    const valueX = x + width - 12;
+    const statusColor = data.damaged ? THEME.hud.alertColor : THEME.hud.okColor;
+    const controlModeColor =
+      data.controlMode === 'ai' ? THEME.hud.aiColor : THEME.hud.textColor;
+    const textX = x + 16;
+    const valueX = x + width - 16;
     let cursorY = y + STATUS_TOP_PADDING;
 
     ctx.save();
-    ctx.fillStyle = PANEL_BACKGROUND_COLOR;
-    ctx.strokeStyle = PANEL_BORDER_COLOR;
+    ctx.fillStyle = THEME.hud.panelBackground;
+    ctx.strokeStyle = THEME.hud.panelBorder;
     ctx.lineWidth = 1;
     ctx.fillRect(x, y, width, height);
     ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
 
-    ctx.font = '10px "SF Mono", Monaco, monospace';
+    ctx.font = `10px ${FONT_MONO}`;
     ctx.textBaseline = 'top';
-    ctx.fillStyle = PANEL_TEXT_COLOR;
+    ctx.fillStyle = THEME.hud.textColor;
     ctx.fillText(PANEL_TITLE, textX, cursorY);
-    cursorY += STATUS_LINE_HEIGHT + 4;
+    cursorY += STATUS_LINE_HEIGHT + 6;
 
     this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'FPS', data.framesPerSecond.toFixed(1));
     cursorY += STATUS_LINE_HEIGHT;
@@ -143,7 +133,7 @@ export class Hud {
       cursorY,
       'SIM',
       data.paused ? 'PAUSED' : 'RUNNING',
-      data.paused ? PANEL_ALERT_COLOR : PANEL_OK_COLOR
+      data.paused ? THEME.hud.alertColor : THEME.hud.okColor
     );
     cursorY += STATUS_LINE_HEIGHT;
     this.renderKeyValueRow(
@@ -155,7 +145,7 @@ export class Hud {
       formatSimulationSpeedLabel(data.simulationSpeed)
     );
     cursorY += STATUS_LINE_HEIGHT;
-    this.renderDivider(ctx, x + 12, x + width - 12, cursorY);
+    this.renderDivider(ctx, x + 16, x + width - 16, cursorY);
     cursorY += STATUS_SECTION_GAP;
 
     this.renderSectionLabel(ctx, textX, cursorY, 'VEHICLE');
@@ -192,7 +182,7 @@ export class Hud {
       formatControlState(data.controlState)
     );
     cursorY += STATUS_LINE_HEIGHT;
-    this.renderDivider(ctx, x + 12, x + width - 12, cursorY);
+    this.renderDivider(ctx, x + 16, x + width - 16, cursorY);
     cursorY += STATUS_SECTION_GAP;
 
     this.renderSectionLabel(ctx, textX, cursorY, 'POPULATION');
@@ -223,7 +213,7 @@ export class Hud {
     cursorY += STATUS_LINE_HEIGHT;
     this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'B MAX', data.bestProgress.toFixed(1));
     cursorY += STATUS_LINE_HEIGHT;
-    this.renderDivider(ctx, x + 12, x + width - 12, cursorY);
+    this.renderDivider(ctx, x + 16, x + width - 16, cursorY);
     cursorY += STATUS_SECTION_GAP;
 
     this.renderSectionLabel(ctx, textX, cursorY, 'PERSISTENCE');
@@ -235,7 +225,7 @@ export class Hud {
       cursorY,
       'SAVED',
       data.savedBrainExists ? 'YES' : 'NO',
-      data.savedBrainExists ? PANEL_OK_COLOR : PANEL_MUTED_TEXT_COLOR
+      data.savedBrainExists ? THEME.hud.okColor : THEME.hud.mutedTextColor
     );
     cursorY += STATUS_LINE_HEIGHT;
     this.renderKeyValueRow(
@@ -292,7 +282,7 @@ export class Hud {
       truncateStatusMessage(data.lastControlAction, 28)
     );
     cursorY += STATUS_LINE_HEIGHT;
-    this.renderDivider(ctx, x + 12, x + width - 12, cursorY);
+    this.renderDivider(ctx, x + 16, x + width - 16, cursorY);
     cursorY += STATUS_SECTION_GAP;
 
     this.renderSectionLabel(ctx, textX, cursorY, 'TRAFFIC');
@@ -308,7 +298,7 @@ export class Hud {
     this.renderSectionLabel(ctx, textX, cursorY, 'SENSORS');
     cursorY += 18;
 
-    this.renderSensorStrip(ctx, x + 12, cursorY, width - 24, data.sensorReadings);
+    this.renderSensorStrip(ctx, x + 16, cursorY, width - 32, data.sensorReadings);
 
     ctx.restore();
   }
@@ -320,11 +310,11 @@ export class Hud {
     y: number,
     label: string,
     value: string,
-    valueColor = VALUE_TEXT_COLOR
+    valueColor: string = THEME.hud.valueColor
   ): void {
-    ctx.font = '9px "SF Mono", Monaco, monospace';
+    ctx.font = `9px ${FONT_MONO}`;
     ctx.textAlign = 'left';
-    ctx.fillStyle = PANEL_MUTED_TEXT_COLOR;
+    ctx.fillStyle = THEME.hud.mutedTextColor;
     ctx.fillText(label, labelX, y);
 
     ctx.textAlign = 'right';
@@ -339,8 +329,8 @@ export class Hud {
     y: number,
     label: string
   ): void {
-    ctx.font = '8px "SF Mono", Monaco, monospace';
-    ctx.fillStyle = SECTION_LABEL_COLOR;
+    ctx.font = `8px ${FONT_MONO}`;
+    ctx.fillStyle = THEME.hud.sectionLabelColor;
     ctx.fillText(label, x, y);
   }
 
@@ -350,7 +340,7 @@ export class Hud {
     endX: number,
     y: number
   ): void {
-    ctx.strokeStyle = SECTION_DIVIDER_COLOR;
+    ctx.strokeStyle = THEME.hud.panelDivider;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(startX, y + 0.5);
@@ -365,8 +355,8 @@ export class Hud {
     width: number,
     height: number
   ): void {
-    const textX = x + 12;
-    const line1Y = y + 12;
+    const textX = x + 16;
+    const line1Y = y + 14;
     const line2Y = line1Y + 24;
     const line3Y = line2Y + 18;
     const line4Y = line3Y + 18;
@@ -374,19 +364,19 @@ export class Hud {
     const line6Y = line5Y + 18;
 
     ctx.save();
-    ctx.fillStyle = PANEL_BACKGROUND_COLOR;
-    ctx.strokeStyle = PANEL_BORDER_COLOR;
+    ctx.fillStyle = THEME.hud.panelBackground;
+    ctx.strokeStyle = THEME.hud.panelBorder;
     ctx.lineWidth = 1;
     ctx.fillRect(x, y, width, height);
     ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
 
     ctx.textBaseline = 'top';
-    ctx.font = '10px "SF Mono", Monaco, monospace';
-    ctx.fillStyle = INSTRUCTIONS_TITLE_COLOR;
+    ctx.font = `10px ${FONT_MONO}`;
+    ctx.fillStyle = THEME.hud.okColor;
     ctx.fillText('INSTRUCTIONS', textX, line1Y);
 
-    ctx.fillStyle = INSTRUCTIONS_TEXT_COLOR;
-    ctx.font = '9px "SF Mono", Monaco, monospace';
+    ctx.fillStyle = THEME.hud.mutedTextColor;
+    ctx.font = `9px ${FONT_MONO}`;
     ctx.fillText('P pause/resume   R restart   1-4 speed presets', textX, line2Y);
     ctx.fillText('[ and ] arm population size   - and = arm mutation', textX, line3Y);
     ctx.fillText('S save best brain   L load saved brain   D delete saved', textX, line4Y);
@@ -413,11 +403,11 @@ export class Hud {
       const slotX = x + index * (slotWidth + gap);
       const slotY = y;
 
-      ctx.fillStyle = 'rgba(12, 25, 29, 0.95)';
+      ctx.fillStyle = THEME.hud.sensorTrackColor;
       ctx.fillRect(slotX, slotY, slotWidth, slotHeight);
-      ctx.fillStyle = 'rgba(135, 255, 224, 0.85)';
+      ctx.fillStyle = THEME.hud.sensorFillColor;
       ctx.fillRect(slotX, slotY + (slotHeight - fillHeight), slotWidth, fillHeight);
-      ctx.strokeStyle = 'rgba(127, 224, 196, 0.28)';
+      ctx.strokeStyle = THEME.hud.sensorBorderColor;
       ctx.strokeRect(slotX + 0.5, slotY + 0.5, slotWidth - 1, slotHeight - 1);
     }
   }
