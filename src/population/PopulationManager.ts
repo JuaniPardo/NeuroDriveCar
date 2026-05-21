@@ -31,6 +31,11 @@ export interface PopulationManagerOptions {
   seedGenome?: BrainGenome | null;
 }
 
+export interface PopulationResetOptions {
+  populationSize?: number;
+  mutationAmount?: number;
+}
+
 export interface PopulationStats {
   populationSize: number;
   aliveCount: number;
@@ -45,8 +50,8 @@ export interface PopulationStats {
 export class PopulationManager {
   private readonly spawnX: number;
   private readonly spawnY: number;
-  private readonly populationSize: number;
-  private readonly mutationAmount: number;
+  private populationSize: number;
+  private mutationAmount: number;
   private readonly cars: Car[] = [];
   private readonly progressByCar: number[] = [];
   private readonly stallTimeByCar: number[] = [];
@@ -80,7 +85,15 @@ export class PopulationManager {
     this.clear();
   }
 
-  public reset(): void {
+  public reset(options: PopulationResetOptions = {}): void {
+    if (options.populationSize !== undefined) {
+      this.populationSize = Math.max(1, options.populationSize);
+    }
+
+    if (options.mutationAmount !== undefined) {
+      this.mutationAmount = Math.max(0, options.mutationAmount);
+    }
+
     this.clear();
     this.populationSource = this.seedGenome === null ? 'random' : 'saved';
 
@@ -119,7 +132,6 @@ export class PopulationManager {
 
   public setSeedGenome(genome: BrainGenome | null): void {
     this.seedGenome = genome === null ? null : cloneBrainGenome(genome);
-    this.populationSource = this.seedGenome === null ? 'random' : 'saved';
   }
 
   public update(deltaTimeSeconds: number, roadBorders: readonly Segment[]): void {

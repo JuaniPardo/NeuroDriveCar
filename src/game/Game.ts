@@ -1,6 +1,16 @@
 import { cloneBrainGenome } from '../ai/mutation';
 import { PopulationManager } from '../population/PopulationManager';
+import {
+  MUTATION_RATE_OPTIONS,
+  POPULATION_SIZE_OPTIONS,
+  type MutationRateOption,
+  type PopulationSizeOption,
+  type RunningSimulationSpeed,
+  type SimulationControlSnapshot,
+  type SimulationSpeedOption,
+} from './simulationControls';
 import { TrafficManager } from '../traffic/TrafficManager';
+import { ControlsPanel } from '../ui/ControlsPanel';
 import { Hud } from '../ui/Hud';
 import {
   deleteBestBrain,
@@ -19,12 +29,31 @@ const FRAME_SMOOTHING = 0.1;
 const WORLD_RENDER_BUFFER = 180;
 const HORIZON_LINE_COLOR = 'rgba(120, 195, 169, 0.08)';
 const POPULATION_LANE_INDEX = 1;
-const POPULATION_SIZE = 25;
 const RESTART_KEY = 'r';
+const PAUSE_KEY = 'p';
 const SAVE_BRAIN_KEY = 's';
 const LOAD_BRAIN_KEY = 'l';
 const DELETE_BRAIN_KEY = 'd';
+const SPEED_ZERO_KEY = '1';
+const SPEED_ONE_KEY = '2';
+const SPEED_TWO_KEY = '3';
+const SPEED_FIVE_KEY = '4';
+const POPULATION_DECREASE_KEY = '[';
+const POPULATION_INCREASE_KEY = ']';
+const MUTATION_DECREASE_KEY = '-';
+const MUTATION_INCREASE_KEY = '=';
+const DEFAULT_RUNNING_SPEED: RunningSimulationSpeed = 1;
+const DEFAULT_POPULATION_SIZE: PopulationSizeOption = 25;
+const DEFAULT_MUTATION_RATE: MutationRateOption = 0.2;
 const RANDOM_POPULATION_MESSAGE = 'Random population active.';
+
+interface SimulationControlState {
+  paused: boolean;
+  runningSpeedMultiplier: RunningSimulationSpeed;
+  selectedPopulationSize: PopulationSizeOption;
+  selectedMutationRate: MutationRateOption;
+  lastActionMessage: string;
+}
 
 export class Game implements Updatable, Renderable {
   private readonly container: HTMLElement;
@@ -37,6 +66,7 @@ export class Game implements Updatable, Renderable {
   private readonly populationManager: PopulationManager;
   private readonly trafficManager: TrafficManager;
   private readonly hud: Hud;
+  private readonly controlsPanel: ControlsPanel;
   private readonly populationSpawnX: number;
   private readonly populationSpawnY: number;
   private readonly keyCommandListener: (event: KeyboardEvent) => void;
@@ -48,6 +78,13 @@ export class Game implements Updatable, Renderable {
   private followTargetY = 0;
   private savedBrainRecord: SavedBrainRecord | null = null;
   private persistenceMessage = RANDOM_POPULATION_MESSAGE;
+  private readonly controlState: SimulationControlState = {
+    paused: false,
+    runningSpeedMultiplier: DEFAULT_RUNNING_SPEED,
+    selectedPopulationSize: DEFAULT_POPULATION_SIZE,
+    selectedMutationRate: DEFAULT_MUTATION_RATE,
+    lastActionMessage: 'Simulation ready.',
+  };
 
   public constructor(container: HTMLElement) {
     this.container = container;
@@ -70,10 +107,28 @@ export class Game implements Updatable, Renderable {
     this.populationManager = new PopulationManager({
       spawnX: this.populationSpawnX,
       spawnY: this.populationSpawnY,
-      populationSize: POPULATION_SIZE,
+      populationSize: this.controlState.selectedPopulationSize,
+      mutationAmount: this.controlState.selectedMutationRate,
       seedGenome: this.savedBrainRecord?.genome ?? null,
     });
     this.trafficManager = new TrafficManager(this.road);
+    this.controlsPanel = new ControlsPanel(this.container, {
+      onTogglePause: () => {
+        this.togglePause();
+      },
+      onRestart: () => {
+        this.restartSimulation('Simulation restarted.');
+      },
+      onSpeedChange: (speed: SimulationSpeedOption) => {
+        this.setSimulationSpeed(speed);
+      },
+      onPopulationSizeChange: (size: PopulationSizeOption) => {
+        this.setPopulationSize(size);
+      },
+      onMutationRateChange: (rate: MutationRateOption) => {
+        this.setMutationRate(rate);
+      },
+    });
     this.resizeObserver = () => {
       this.resize();
     };
@@ -85,7 +140,10 @@ export class Game implements Updatable, Renderable {
     this.context.imageSmoothingEnabled = false;
 
     this.resize();
-    this.restartSimulation();
+    this.synchronizeSimulationWorld();
+    this.camera.reset(this.populationSpawnX, this.populationSpawnY);
+    this.followTargetX = this.populationSpawnX;
+    this.followTargetY = this.populationSpawnY;
     window.addEventListener('resize', this.resizeObserver);
     window.addEventListener('keydown', this.keyCommandListener);
   }
@@ -96,6 +154,7 @@ export class Game implements Updatable, Renderable {
 
   public destroy(): void {
     this.loop.stop();
+    this.controlsPanel.destroy();
     this.populationManager.destroy();
     this.trafficManager.destroy();
     window.removeEventListener('resize', this.resizeObserver);
@@ -104,38 +163,19 @@ export class Game implements Updatable, Renderable {
   }
 
   public update(deltaTimeSeconds: number): void {
-    this.populationManager.update(deltaTimeSeconds, this.road.borderSegments);
-    this.populationManager.refreshStats();
+    this.updateFrameRate(deltaTimeSeconds);
 
-    const referenceCar = this.populationManager.getBestCar();
-
-    this.trafficManager.update(
-      deltaTimeSeconds,
-      referenceCar,
-      this.road.borderSegments,
-      this.populationManager.getCars()
-    );
-    this.populationManager.updateSensors(
-      this.road.borderSegments,
-      this.trafficManager.getTrafficPolygons()
-    );
-    this.populationManager.refreshStats();
-
-    const bestCar = this.populationManager.getBestCar();
-
-    this.followTargetX = bestCar.x;
-    this.followTargetY = bestCar.y;
-    this.camera.follow(this.followTargetX, this.followTargetY, deltaTimeSeconds);
-
-    const instantFramesPerSecond = deltaTimeSeconds > 0 ? 1 / deltaTimeSeconds : 0;
-
-    if (this.framesPerSecond === 0) {
-      this.framesPerSecond = instantFramesPerSecond;
+    if (this.controlState.paused) {
       return;
     }
 
-    this.framesPerSecond +=
-      (instantFramesPerSecond - this.framesPerSecond) * FRAME_SMOOTHING;
+    for (
+      let stepIndex = 0;
+      stepIndex < this.controlState.runningSpeedMultiplier;
+      stepIndex += 1
+    ) {
+      this.advanceSimulation(deltaTimeSeconds);
+    }
   }
 
   public render(): void {
@@ -167,11 +207,24 @@ export class Game implements Updatable, Renderable {
       bestCarIndex: populationStats.bestCarIndex,
       bestProgress: populationStats.bestProgress,
       generation: populationStats.generation,
+      paused: this.controlState.paused,
+      simulationSpeed: this.getSimulationSpeedMultiplier(),
+      selectedPopulationSize: this.controlState.selectedPopulationSize,
+      selectedMutationRate: this.controlState.selectedMutationRate,
+      lastControlAction: this.controlState.lastActionMessage,
       savedBrainExists: this.savedBrainRecord !== null,
       savedBestDistance: this.savedBrainRecord?.bestDistance ?? null,
       populationSource: populationStats.populationSource,
       mutationAmount: populationStats.mutationAmount,
       persistenceMessage: this.persistenceMessage,
+    });
+    this.controlsPanel.render({
+      ...this.getControlSnapshot(),
+      generation: populationStats.generation,
+      activePopulationSize: populationStats.populationSize,
+      activeMutationRate: populationStats.mutationAmount,
+      populationSource: populationStats.populationSource,
+      savedBrainExists: this.savedBrainRecord !== null,
     });
   }
 
@@ -226,6 +279,12 @@ export class Game implements Updatable, Renderable {
 
     const key = event.key.toLowerCase();
 
+    if (key === PAUSE_KEY) {
+      event.preventDefault();
+      this.togglePause();
+      return;
+    }
+
     if (key === SAVE_BRAIN_KEY) {
       event.preventDefault();
       this.saveCurrentBestBrain();
@@ -246,29 +305,75 @@ export class Game implements Updatable, Renderable {
 
     if (key === RESTART_KEY) {
       event.preventDefault();
-      this.restartSimulation();
+      this.restartSimulation('Simulation restarted.');
+      return;
+    }
+
+    if (key === SPEED_ZERO_KEY) {
+      event.preventDefault();
+      this.setSimulationSpeed(0);
+      return;
+    }
+
+    if (key === SPEED_ONE_KEY) {
+      event.preventDefault();
+      this.setSimulationSpeed(1);
+      return;
+    }
+
+    if (key === SPEED_TWO_KEY) {
+      event.preventDefault();
+      this.setSimulationSpeed(2);
+      return;
+    }
+
+    if (key === SPEED_FIVE_KEY) {
+      event.preventDefault();
+      this.setSimulationSpeed(5);
+      return;
+    }
+
+    if (key === POPULATION_DECREASE_KEY) {
+      event.preventDefault();
+      this.cyclePopulationSize(-1);
+      return;
+    }
+
+    if (key === POPULATION_INCREASE_KEY) {
+      event.preventDefault();
+      this.cyclePopulationSize(1);
+      return;
+    }
+
+    if (key === MUTATION_DECREASE_KEY) {
+      event.preventDefault();
+      this.cycleMutationRate(-1);
+      return;
+    }
+
+    if (key === MUTATION_INCREASE_KEY) {
+      event.preventDefault();
+      this.cycleMutationRate(1);
     }
   }
 
   private restartSimulation(nextMessage?: string): void {
-    this.populationManager.reset();
-    this.trafficManager.reset(this.populationManager.getBestCar());
-    this.populationManager.updateSensors(
-      this.road.borderSegments,
-      this.trafficManager.getTrafficPolygons()
-    );
-    this.populationManager.refreshStats();
+    this.populationManager.reset({
+      populationSize: this.controlState.selectedPopulationSize,
+      mutationAmount: this.controlState.selectedMutationRate,
+    });
+    this.synchronizeSimulationWorld();
     this.camera.reset(this.populationSpawnX, this.populationSpawnY);
     this.followTargetX = this.populationSpawnX;
     this.followTargetY = this.populationSpawnY;
     this.framesPerSecond = 0;
 
     if (nextMessage !== undefined) {
-      this.persistenceMessage = nextMessage;
+      this.controlState.lastActionMessage = nextMessage;
       return;
     }
 
-    this.updatePersistenceMessageForCurrentSeed();
+    this.controlState.lastActionMessage = this.buildRestartActionMessage();
   }
 
   private saveCurrentBestBrain(): void {
@@ -276,6 +381,7 @@ export class Game implements Updatable, Renderable {
 
     if (genome === null) {
       this.persistenceMessage = 'No AI brain available to save.';
+      this.controlState.lastActionMessage = 'Save skipped: no AI brain available.';
       return;
     }
 
@@ -284,12 +390,14 @@ export class Game implements Updatable, Renderable {
 
     if (savedRecord === null) {
       this.persistenceMessage = 'localStorage unavailable. Save skipped.';
+      this.controlState.lastActionMessage = 'Save skipped: localStorage unavailable.';
       return;
     }
 
     this.savedBrainRecord = savedRecord;
     this.populationManager.setSeedGenome(savedRecord.genome);
     this.persistenceMessage = `Saved best brain @ ${bestDistance.toFixed(1)}.`;
+    this.controlState.lastActionMessage = 'Saved current best brain.';
   }
 
   private loadSavedBrainIntoPopulation(): void {
@@ -360,6 +468,126 @@ export class Game implements Updatable, Renderable {
     this.persistenceMessage = RANDOM_POPULATION_MESSAGE;
   }
 
+  private synchronizeSimulationWorld(): void {
+    this.trafficManager.reset(this.populationManager.getBestCar());
+    this.populationManager.updateSensors(
+      this.road.borderSegments,
+      this.trafficManager.getTrafficPolygons()
+    );
+    this.populationManager.refreshStats();
+    this.updatePersistenceMessageForCurrentSeed();
+  }
+
+  private advanceSimulation(deltaTimeSeconds: number): void {
+    this.populationManager.update(deltaTimeSeconds, this.road.borderSegments);
+    this.populationManager.refreshStats();
+
+    const referenceCar = this.populationManager.getBestCar();
+
+    this.trafficManager.update(
+      deltaTimeSeconds,
+      referenceCar,
+      this.road.borderSegments,
+      this.populationManager.getCars()
+    );
+    this.populationManager.updateSensors(
+      this.road.borderSegments,
+      this.trafficManager.getTrafficPolygons()
+    );
+    this.populationManager.refreshStats();
+
+    const bestCar = this.populationManager.getBestCar();
+
+    this.followTargetX = bestCar.x;
+    this.followTargetY = bestCar.y;
+    this.camera.follow(this.followTargetX, this.followTargetY, deltaTimeSeconds);
+  }
+
+  private updateFrameRate(deltaTimeSeconds: number): void {
+    const instantFramesPerSecond = deltaTimeSeconds > 0 ? 1 / deltaTimeSeconds : 0;
+
+    if (this.framesPerSecond === 0) {
+      this.framesPerSecond = instantFramesPerSecond;
+      return;
+    }
+
+    this.framesPerSecond +=
+      (instantFramesPerSecond - this.framesPerSecond) * FRAME_SMOOTHING;
+  }
+
+  private togglePause(): void {
+    this.controlState.paused = !this.controlState.paused;
+    this.controlState.lastActionMessage = this.controlState.paused
+      ? 'Simulation paused.'
+      : `Simulation resumed @ ${this.controlState.runningSpeedMultiplier}x.`;
+  }
+
+  private setSimulationSpeed(nextSpeed: SimulationSpeedOption): void {
+    if (nextSpeed === 0) {
+      this.controlState.paused = true;
+      this.controlState.lastActionMessage = 'Simulation paused at 0x.';
+      return;
+    }
+
+    this.controlState.paused = false;
+    this.controlState.runningSpeedMultiplier = nextSpeed;
+    this.controlState.lastActionMessage = `Simulation speed set to ${nextSpeed}x.`;
+  }
+
+  private setPopulationSize(nextPopulationSize: PopulationSizeOption): void {
+    this.controlState.selectedPopulationSize = nextPopulationSize;
+    this.controlState.lastActionMessage =
+      `Population size armed: ${nextPopulationSize}. Restart to apply.`;
+  }
+
+  private setMutationRate(nextMutationRate: MutationRateOption): void {
+    this.controlState.selectedMutationRate = nextMutationRate;
+    this.controlState.lastActionMessage =
+      `Mutation rate armed: ${nextMutationRate.toFixed(2)}. Restart to apply.`;
+  }
+
+  private cyclePopulationSize(direction: -1 | 1): void {
+    const currentIndex = POPULATION_SIZE_OPTIONS.indexOf(
+      this.controlState.selectedPopulationSize
+    );
+    const nextIndex = clampOptionIndex(
+      currentIndex + direction,
+      POPULATION_SIZE_OPTIONS.length
+    );
+
+    this.setPopulationSize(POPULATION_SIZE_OPTIONS[nextIndex]);
+  }
+
+  private cycleMutationRate(direction: -1 | 1): void {
+    const currentIndex = MUTATION_RATE_OPTIONS.indexOf(
+      this.controlState.selectedMutationRate
+    );
+    const nextIndex = clampOptionIndex(
+      currentIndex + direction,
+      MUTATION_RATE_OPTIONS.length
+    );
+
+    this.setMutationRate(MUTATION_RATE_OPTIONS[nextIndex]);
+  }
+
+  private getSimulationSpeedMultiplier(): SimulationSpeedOption {
+    return this.controlState.paused ? 0 : this.controlState.runningSpeedMultiplier;
+  }
+
+  private getControlSnapshot(): SimulationControlSnapshot {
+    return {
+      paused: this.controlState.paused,
+      speedMultiplier: this.getSimulationSpeedMultiplier(),
+      selectedPopulationSize: this.controlState.selectedPopulationSize,
+      selectedMutationRate: this.controlState.selectedMutationRate,
+      lastActionMessage: this.controlState.lastActionMessage,
+    };
+  }
+
+  private buildRestartActionMessage(): string {
+    return `Restarted GEN ${this.populationManager.getStats().generation} @ ${this.getSimulationSpeedMultiplier()}x.`;
+  }
+
   private renderWorldBackdrop(
     ctx: CanvasRenderingContext2D,
     visibleTop: number,
@@ -390,4 +618,8 @@ export class Game implements Updatable, Renderable {
 
     return gradient;
   }
+}
+
+function clampOptionIndex(index: number, length: number): number {
+  return Math.max(0, Math.min(length - 1, index));
 }

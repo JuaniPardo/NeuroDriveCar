@@ -1,6 +1,12 @@
 import type { BrainSnapshot } from '../ai/Brain';
 import type { CarControlMode } from '../car/Car';
 import type { ControlState } from '../car/Controls';
+import {
+  formatSimulationSpeedLabel,
+  type MutationRateOption,
+  type PopulationSizeOption,
+  type SimulationSpeedOption,
+} from '../game/simulationControls';
 import type { PopulationSource } from '../population/PopulationManager';
 import { NeuralVisualizer } from './NeuralVisualizer';
 
@@ -11,7 +17,7 @@ const PANEL_MUTED_TEXT_COLOR = '#9db7aa';
 const PANEL_ALERT_COLOR = '#ff8a75';
 const PANEL_OK_COLOR = '#cde7d5';
 const PANEL_AI_COLOR = '#8fe1ff';
-const PANEL_TITLE = 'NEURODRIVECAR / MVP 10';
+const PANEL_TITLE = 'NEURODRIVECAR / MVP 11';
 const SENSOR_STRIP_HEIGHT = 16;
 const STATUS_LINE_HEIGHT = 22;
 const STATUS_TOP_PADDING = 14;
@@ -43,6 +49,11 @@ export interface HudRenderData {
   bestCarIndex: number;
   bestProgress: number;
   generation: number;
+  paused: boolean;
+  simulationSpeed: SimulationSpeedOption;
+  selectedPopulationSize: PopulationSizeOption;
+  selectedMutationRate: MutationRateOption;
+  lastControlAction: string;
   savedBrainExists: boolean;
   savedBestDistance: number | null;
   populationSource: PopulationSource;
@@ -62,9 +73,9 @@ export class Hud {
     const statusPanelX = margin;
     const statusPanelY = margin;
     const statusPanelWidth = Math.min(340, Math.max(304, data.width * 0.26));
-    const statusPanelHeight = 612;
+    const statusPanelHeight = 676;
     const instructionsPanelY = statusPanelY + statusPanelHeight + 12;
-    const instructionsPanelHeight = 112;
+    const instructionsPanelHeight = 132;
     const neuralPanelWidth = Math.min(420, Math.max(320, data.width * 0.22));
     const neuralPanelHeight = Math.min(360, Math.max(300, data.height * 0.34));
     const neuralPanelX = data.width - neuralPanelWidth - margin;
@@ -125,6 +136,25 @@ export class Hud {
 
     this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'FPS', data.framesPerSecond.toFixed(1));
     cursorY += STATUS_LINE_HEIGHT;
+    this.renderKeyValueRow(
+      ctx,
+      textX,
+      valueX,
+      cursorY,
+      'SIM',
+      data.paused ? 'PAUSED' : 'RUNNING',
+      data.paused ? PANEL_ALERT_COLOR : PANEL_OK_COLOR
+    );
+    cursorY += STATUS_LINE_HEIGHT;
+    this.renderKeyValueRow(
+      ctx,
+      textX,
+      valueX,
+      cursorY,
+      'MULT',
+      formatSimulationSpeedLabel(data.simulationSpeed)
+    );
+    cursorY += STATUS_LINE_HEIGHT;
     this.renderDivider(ctx, x + 12, x + width - 12, cursorY);
     cursorY += STATUS_SECTION_GAP;
 
@@ -178,6 +208,15 @@ export class Hud {
     cursorY += STATUS_LINE_HEIGHT;
     this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'POP', String(data.populationSize));
     cursorY += STATUS_LINE_HEIGHT;
+    this.renderKeyValueRow(
+      ctx,
+      textX,
+      valueX,
+      cursorY,
+      'NEXT POP',
+      String(data.selectedPopulationSize)
+    );
+    cursorY += STATUS_LINE_HEIGHT;
     this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'ALIVE', String(data.aliveCount));
     cursorY += STATUS_LINE_HEIGHT;
     this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'CRASH', String(data.crashedCount));
@@ -222,6 +261,15 @@ export class Hud {
       textX,
       valueX,
       cursorY,
+      'NEXT MUT',
+      data.selectedMutationRate.toFixed(2)
+    );
+    cursorY += STATUS_LINE_HEIGHT;
+    this.renderKeyValueRow(
+      ctx,
+      textX,
+      valueX,
+      cursorY,
       'S BEST',
       data.savedBestDistance === null ? '--' : data.savedBestDistance.toFixed(1)
     );
@@ -233,6 +281,15 @@ export class Hud {
       cursorY,
       'IO',
       truncateStatusMessage(data.persistenceMessage, 28)
+    );
+    cursorY += STATUS_LINE_HEIGHT;
+    this.renderKeyValueRow(
+      ctx,
+      textX,
+      valueX,
+      cursorY,
+      'CTRL',
+      truncateStatusMessage(data.lastControlAction, 28)
     );
     cursorY += STATUS_LINE_HEIGHT;
     this.renderDivider(ctx, x + 12, x + width - 12, cursorY);
@@ -314,6 +371,7 @@ export class Hud {
     const line3Y = line2Y + 18;
     const line4Y = line3Y + 18;
     const line5Y = line4Y + 18;
+    const line6Y = line5Y + 18;
 
     ctx.save();
     ctx.fillStyle = PANEL_BACKGROUND_COLOR;
@@ -329,10 +387,11 @@ export class Hud {
 
     ctx.fillStyle = INSTRUCTIONS_TEXT_COLOR;
     ctx.font = '9px "SF Mono", Monaco, monospace';
-    ctx.fillText('S save best brain   L load saved brain', textX, line2Y);
-    ctx.fillText('D delete saved brain   R restart current seed', textX, line3Y);
-    ctx.fillText('Saved seeds keep one exact car plus mutated variants.', textX, line4Y);
-    ctx.fillText('Only neural brain data is persisted to localStorage.', textX, line5Y);
+    ctx.fillText('P pause/resume   R restart   1-4 speed presets', textX, line2Y);
+    ctx.fillText('[ and ] arm population size   - and = arm mutation', textX, line3Y);
+    ctx.fillText('S save best brain   L load saved brain   D delete saved', textX, line4Y);
+    ctx.fillText('Population and mutation changes apply on restart.', textX, line5Y);
+    ctx.fillText('Only neural brain data is persisted to localStorage.', textX, line6Y);
     ctx.restore();
   }
 
