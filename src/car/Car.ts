@@ -63,6 +63,11 @@ export interface CarOptions {
   sensor?: Partial<SensorConfig> | false;
 }
 
+export interface CarRenderOptions {
+  renderSensors?: boolean;
+  renderDebug?: boolean;
+}
+
 const DEFAULT_CAR_APPEARANCE: CarAppearance = {
   bodyColor: CAR_BODY_COLOR,
   damagedBodyColor: DAMAGED_CAR_BODY_COLOR,
@@ -201,7 +206,13 @@ export class Car {
     this.assessDamage(roadBorders);
   }
 
-  public render(ctx: CanvasRenderingContext2D): void {
+  public render(
+    ctx: CanvasRenderingContext2D,
+    options: CarRenderOptions = {}
+  ): void {
+    const renderSensors = options.renderSensors ?? true;
+    const renderDebug = options.renderDebug ?? true;
+
     ctx.save();
     ctx.translate(this.x, this.y);
     ctx.rotate(-this.angle);
@@ -285,17 +296,17 @@ export class Car {
     ctx.lineTo(0, -this.height * 0.18);
     ctx.stroke();
 
-    if (ENABLE_DEBUG_VECTORS) {
+    if (renderDebug && ENABLE_DEBUG_VECTORS) {
       this.renderDebugVectors(ctx);
     }
 
     ctx.restore();
 
-    if (this.sensor !== null) {
+    if (renderSensors && this.sensor !== null) {
       this.sensor.render(ctx);
     }
 
-    if (ENABLE_COLLISION_DEBUG) {
+    if (renderDebug && ENABLE_COLLISION_DEBUG) {
       this.renderCollisionDebug(ctx);
     }
   }

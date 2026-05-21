@@ -2,18 +2,18 @@ import { Camera } from './Camera';
 import { Loop } from './Loop';
 import type { Renderable, Updatable } from './types';
 import { Road } from '../world/Road';
-import { Car, type CarControlMode } from '../car/Car';
 import { TrafficManager } from '../traffic/TrafficManager';
 import { Hud } from '../ui/Hud';
+import { PopulationManager } from '../population/PopulationManager';
 
 const BACKGROUND_TOP_COLOR = '#081114';
 const BACKGROUND_BOTTOM_COLOR = '#020507';
 const FRAME_SMOOTHING = 0.1;
 const WORLD_RENDER_BUFFER = 180;
 const HORIZON_LINE_COLOR = 'rgba(120, 195, 169, 0.08)';
-const PLAYER_LANE_INDEX = 1;
+const POPULATION_LANE_INDEX = 1;
+const POPULATION_SIZE = 25;
 const RESTART_KEY = 'r';
-const CONTROL_MODE_TOGGLE_KEY = 'm';
 
 export class Game implements Updatable, Renderable {
   private readonly container: HTMLElement;
@@ -23,22 +23,18 @@ export class Game implements Updatable, Renderable {
   private readonly resizeObserver: () => void;
   private readonly road: Road;
   private readonly camera: Camera;
-  private readonly playerCar: Car;
+  private readonly populationManager: PopulationManager;
   private readonly trafficManager: TrafficManager;
   private readonly hud: Hud;
-  private readonly playerSpawnX: number;
-  private readonly playerSpawnY: number;
+  private readonly populationSpawnX: number;
+  private readonly populationSpawnY: number;
   private readonly keyCommandListener: (event: KeyboardEvent) => void;
   private backgroundGradient: CanvasGradient | null = null;
   private width = 0;
   private height = 0;
-  private elapsedTimeSeconds = 0;
   private framesPerSecond = 0;
   private followTargetX = 0;
   private followTargetY = 0;
-  private traveledDistance = 0;
-  private lastPlayerX = 0;
-  private lastPlayerY = 0;
 
   public constructor(container: HTMLElement) {
     this.container = container;
@@ -55,10 +51,12 @@ export class Game implements Updatable, Renderable {
     this.road = new Road();
     this.camera = new Camera();
     this.hud = new Hud();
-    this.playerSpawnX = this.road.getLaneCenter(PLAYER_LANE_INDEX);
-    this.playerSpawnY = 0;
-    this.playerCar = new Car(this.playerSpawnX, this.playerSpawnY, 42, 74, undefined, {
-      controlMode: 'ai',
+    this.populationSpawnX = this.road.getLaneCenter(POPULATION_LANE_INDEX);
+    this.populationSpawnY = 0;
+    this.populationManager = new PopulationManager({
+      spawnX: this.populationSpawnX,
+      spawnY: this.populationSpawnY,
+      populationSize: POPULATION_SIZE,
     });
     this.trafficManager = new TrafficManager(this.road);
     this.resizeObserver = () => {
@@ -83,7 +81,7 @@ export class Game implements Updatable, Renderable {
 
   public destroy(): void {
     this.loop.stop();
-    this.playerCar.destroy();
+    this.populationManager.destroy();
     this.trafficManager.destroy();
     window.removeEventListener('resize', this.resizeObserver);
     window.removeEventListener('keydown', this.keyCommandListener);
@@ -91,25 +89,27 @@ export class Game implements Updatable, Renderable {
   }
 
   public update(deltaTimeSeconds: number): void {
-    this.elapsedTimeSeconds += deltaTimeSeconds;
-    this.playerCar.update(deltaTimeSeconds, this.road.borderSegments);
+    this.populationManager.update(deltaTimeSeconds, this.road.borderSegments);
+    this.populationManager.refreshStats();
+
+    const referenceCar = this.populationManager.getBestCar();
+
     this.trafficManager.update(
       deltaTimeSeconds,
-      this.playerCar,
-      this.road.borderSegments
+      referenceCar,
+      this.road.borderSegments,
+      this.populationManager.getCars()
     );
-    this.playerCar.updateSensors(
+    this.populationManager.updateSensors(
       this.road.borderSegments,
       this.trafficManager.getTrafficPolygons()
     );
-    this.traveledDistance += Math.hypot(
-      this.playerCar.x - this.lastPlayerX,
-      this.playerCar.y - this.lastPlayerY
-    );
-    this.lastPlayerX = this.playerCar.x;
-    this.lastPlayerY = this.playerCar.y;
-    this.followTargetX = this.playerCar.x;
-    this.followTargetY = this.playerCar.y;
+    this.populationManager.refreshStats();
+
+    const bestCar = this.populationManager.getBestCar();
+
+    this.followTargetX = bestCar.x;
+    this.followTargetY = bestCar.y;
     this.camera.follow(
       this.followTargetX,
       this.followTargetY,
@@ -130,6 +130,8 @@ export class Game implements Updatable, Renderable {
 
   public render(): void {
     const ctx = this.context;
+    const bestCar = this.populationManager.getBestCar();
+    const populationStats = this.populationManager.getStats();
 
     ctx.clearRect(0, 0, this.width, this.height);
     this.renderBackground(ctx);
@@ -138,17 +140,23 @@ export class Game implements Updatable, Renderable {
       width: this.width,
       height: this.height,
       framesPerSecond: this.framesPerSecond,
-      controlMode: this.playerCar.getControlMode(),
-      speed: this.playerCar.speed,
-      damaged: this.playerCar.damaged,
-      traveledDistance: this.traveledDistance,
+      controlMode: bestCar.getControlMode(),
+      speed: bestCar.speed,
+      damaged: bestCar.damaged,
+      traveledDistance: populationStats.bestProgress,
       trafficCount: this.trafficManager.getActiveCount(),
       trafficTargetSpeed: this.trafficManager.getTargetSpeed(),
       laneSpeedLabel: this.trafficManager.getLaneSpeedDebugLabel(),
-      sensorHitCount: this.playerCar.getSensorHitCount(),
-      sensorReadings: this.playerCar.getSensorReadings(),
-      controlState: this.playerCar.getControlState(),
-      brainSnapshot: this.playerCar.getBrainSnapshot(),
+      sensorHitCount: bestCar.getSensorHitCount(),
+      sensorReadings: bestCar.getSensorReadings(),
+      controlState: bestCar.getControlState(),
+      brainSnapshot: bestCar.getBrainSnapshot(),
+      populationSize: populationStats.populationSize,
+      aliveCount: populationStats.aliveCount,
+      crashedCount: populationStats.crashedCount,
+      bestCarIndex: populationStats.bestCarIndex,
+      bestProgress: populationStats.bestProgress,
+      generation: populationStats.generation,
     });
   }
 
@@ -193,7 +201,7 @@ export class Game implements Updatable, Renderable {
     this.road.renderDebug(ctx, visibleTop, visibleBottom);
     this.trafficManager.render(ctx);
     this.trafficManager.renderDebug(ctx, visibleTop, visibleBottom);
-    this.playerCar.render(ctx);
+    this.populationManager.render(ctx);
     ctx.restore();
   }
 
@@ -205,39 +213,20 @@ export class Game implements Updatable, Renderable {
       this.restartSimulation();
       return;
     }
-
-    if (key === CONTROL_MODE_TOGGLE_KEY) {
-      event.preventDefault();
-      this.togglePlayerControlMode();
-    }
   }
 
   private restartSimulation(): void {
-    this.playerCar.reset(this.playerSpawnX, this.playerSpawnY);
-    this.trafficManager.reset(this.playerCar);
-    this.playerCar.updateSensors(
+    this.populationManager.reset();
+    this.trafficManager.reset(this.populationManager.getBestCar());
+    this.populationManager.updateSensors(
       this.road.borderSegments,
       this.trafficManager.getTrafficPolygons()
     );
-    this.camera.reset(this.playerSpawnX, this.playerSpawnY);
-    this.followTargetX = this.playerSpawnX;
-    this.followTargetY = this.playerSpawnY;
-    this.traveledDistance = 0;
-    this.lastPlayerX = this.playerSpawnX;
-    this.lastPlayerY = this.playerSpawnY;
-    this.elapsedTimeSeconds = 0;
+    this.populationManager.refreshStats();
+    this.camera.reset(this.populationSpawnX, this.populationSpawnY);
+    this.followTargetX = this.populationSpawnX;
+    this.followTargetY = this.populationSpawnY;
     this.framesPerSecond = 0;
-  }
-
-  private togglePlayerControlMode(): void {
-    const nextMode: CarControlMode =
-      this.playerCar.getControlMode() === 'ai' ? 'player' : 'ai';
-
-    this.playerCar.setControlMode(nextMode);
-    this.playerCar.updateSensors(
-      this.road.borderSegments,
-      this.trafficManager.getTrafficPolygons()
-    );
   }
 
   private renderWorldBackdrop(

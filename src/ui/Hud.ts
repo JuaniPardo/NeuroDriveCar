@@ -10,9 +10,7 @@ const PANEL_MUTED_TEXT_COLOR = '#9db7aa';
 const PANEL_ALERT_COLOR = '#ff8a75';
 const PANEL_OK_COLOR = '#cde7d5';
 const PANEL_AI_COLOR = '#8fe1ff';
-const PANEL_WARNING_COLOR = '#f0c67a';
-const PANEL_POSITIVE_COLOR = '#9cf0bd';
-const PANEL_TITLE = 'NEURODRIVECAR / MVP 08';
+const PANEL_TITLE = 'NEURODRIVECAR / MVP 09';
 const SENSOR_DECIMALS = 2;
 const STATUS_LINE_HEIGHT = 28;
 const STATUS_TOP_PADDING = 14;
@@ -33,6 +31,12 @@ export interface HudRenderData {
   sensorReadings: readonly number[];
   controlState: Readonly<ControlState>;
   brainSnapshot: BrainSnapshot | null;
+  populationSize: number;
+  aliveCount: number;
+  crashedCount: number;
+  bestCarIndex: number;
+  bestProgress: number;
+  generation: number;
 }
 
 export class Hud {
@@ -47,7 +51,7 @@ export class Hud {
     const statusPanelX = margin;
     const statusPanelY = margin;
     const statusPanelWidth = Math.min(232, Math.max(196, data.width * 0.19));
-    const statusPanelHeight = 324;
+    const statusPanelHeight = Math.min(418, Math.max(372, data.height - margin * 2));
     const neuralPanelWidth = Math.min(420, Math.max(320, data.width * 0.22));
     const neuralPanelHeight = Math.min(360, Math.max(300, data.height * 0.34));
     const neuralPanelX = data.width - neuralPanelWidth - margin;
@@ -79,23 +83,25 @@ export class Hud {
     height: number,
     data: HudRenderData
   ): void {
-    const closingDelta = Math.abs(data.speed) - data.trafficTargetSpeed;
     const statusLabel = data.damaged ? 'DAMAGED' : 'ACTIVE';
     const statusColor = data.damaged ? PANEL_ALERT_COLOR : PANEL_OK_COLOR;
     const controlModeColor = data.controlMode === 'ai' ? PANEL_AI_COLOR : PANEL_TEXT_COLOR;
-    const deltaColor = closingDelta >= 0 ? PANEL_POSITIVE_COLOR : PANEL_WARNING_COLOR;
     const textX = x + 12;
     const line1Y = y + STATUS_TOP_PADDING;
-    const line2Y = line1Y + STATUS_LINE_HEIGHT;
-    const line3Y = line2Y + STATUS_LINE_HEIGHT + STATUS_SECTION_GAP;
-    const line4Y = line3Y + STATUS_LINE_HEIGHT;
-    const line5Y = line4Y + STATUS_LINE_HEIGHT;
-    const line6Y = line5Y + STATUS_LINE_HEIGHT;
-    const line7Y = line6Y + STATUS_LINE_HEIGHT;
-    const line8Y = line7Y + STATUS_LINE_HEIGHT + STATUS_SECTION_GAP;
-    const line9Y = line8Y + STATUS_LINE_HEIGHT;
-    const line10Y = line9Y + STATUS_LINE_HEIGHT;
-    const sensorStripY = line10Y + STATUS_LINE_HEIGHT + 6;
+    const compactLineHeight = STATUS_LINE_HEIGHT - 4;
+    const line2Y = line1Y + compactLineHeight;
+    const line3Y = line2Y + compactLineHeight + STATUS_SECTION_GAP;
+    const line4Y = line3Y + compactLineHeight;
+    const line5Y = line4Y + compactLineHeight;
+    const line6Y = line5Y + compactLineHeight;
+    const line7Y = line6Y + compactLineHeight;
+    const line8Y = line7Y + compactLineHeight + STATUS_SECTION_GAP;
+    const line9Y = line8Y + compactLineHeight;
+    const line10Y = line9Y + compactLineHeight;
+    const line11Y = line10Y + compactLineHeight;
+    const line12Y = line11Y + compactLineHeight;
+    const line13Y = line12Y + compactLineHeight;
+    const sensorStripY = line13Y + compactLineHeight + 10;
 
     ctx.save();
     ctx.fillStyle = PANEL_BACKGROUND_COLOR;
@@ -114,7 +120,7 @@ export class Hud {
     ctx.fillText(`STATE ${statusLabel}`, textX, line3Y);
 
     ctx.fillStyle = controlModeColor;
-    ctx.fillText(`MODE ${data.controlMode.toUpperCase()}  [M]`, textX, line4Y);
+    ctx.fillText(`MODE ${data.controlMode.toUpperCase()}`, textX, line4Y);
 
     ctx.fillStyle = PANEL_TEXT_COLOR;
     ctx.fillText(
@@ -122,21 +128,19 @@ export class Hud {
       textX,
       line5Y
     );
-    ctx.fillText(`DIST ${data.traveledDistance.toFixed(1)}`, textX, line6Y);
-    ctx.fillText(`TRAFFIC ${data.trafficCount}`, textX, line7Y);
-    ctx.fillText(`T SPEED ${data.trafficTargetSpeed.toFixed(1)}`, textX, line8Y);
-
-    ctx.fillStyle = deltaColor;
-    ctx.fillText(`DELTA ${closingDelta.toFixed(1)}`, textX, line9Y);
+    ctx.fillText(`PROG ${data.traveledDistance.toFixed(1)}`, textX, line6Y);
+    ctx.fillText(`BEST ${data.bestCarIndex + 1} / GEN ${data.generation}`, textX, line7Y);
+    ctx.fillText(`POP ${data.populationSize}`, textX, line8Y);
+    ctx.fillText(`ALIVE ${data.aliveCount}`, textX, line9Y);
+    ctx.fillText(`CRASH ${data.crashedCount}`, textX, line10Y);
+    ctx.fillText(`B MAX ${data.bestProgress.toFixed(1)}`, textX, line11Y);
+    ctx.fillText(`TRAFFIC ${data.trafficCount}`, textX, line12Y);
+    ctx.fillText(`T SPEED ${data.trafficTargetSpeed.toFixed(1)}`, textX, line13Y);
 
     ctx.fillStyle = PANEL_MUTED_TEXT_COLOR;
-    ctx.fillText(`L SPD ${data.laneSpeedLabel}`, textX, line10Y);
-    ctx.fillText(`S HIT ${data.sensorHitCount}`, textX, line10Y + STATUS_LINE_HEIGHT);
-    ctx.fillText(
-      `CTRL ${formatControlState(data.controlState)}`,
-      textX,
-      line10Y + STATUS_LINE_HEIGHT * 2
-    );
+    ctx.fillText(`L SPD ${data.laneSpeedLabel}`, textX, sensorStripY - 50);
+    ctx.fillText(`S HIT ${data.sensorHitCount}`, textX, sensorStripY - 28);
+    ctx.fillText(`CTRL ${formatControlState(data.controlState)}`, textX, sensorStripY - 6);
 
     this.renderSensorStrip(ctx, x + 12, sensorStripY, width - 24, data.sensorReadings);
 

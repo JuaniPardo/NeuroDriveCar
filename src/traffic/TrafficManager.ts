@@ -69,16 +69,17 @@ export class TrafficManager {
 
   public update(
     deltaTimeSeconds: number,
-    playerCar: Car,
-    roadBorders: readonly Segment[]
+    referenceCar: Car,
+    roadBorders: readonly Segment[],
+    subjectCars: readonly Car[] = [referenceCar]
   ): void {
     for (const vehicle of this.vehicles) {
       vehicle.car.update(deltaTimeSeconds, roadBorders);
     }
 
-    this.ensureTrafficAhead(playerCar.y);
-    this.removePassedTraffic(playerCar.y);
-    this.assessPlayerCollisions(playerCar);
+    this.ensureTrafficAhead(referenceCar.y);
+    this.removePassedTraffic(referenceCar.y);
+    this.assessSubjectCollisions(subjectCars);
   }
 
   public render(ctx: CanvasRenderingContext2D): void {
@@ -273,20 +274,22 @@ export class TrafficManager {
     this.trafficPolygons.length = writeIndex;
   }
 
-  private assessPlayerCollisions(playerCar: Car): void {
-    if (playerCar.damaged) {
-      return;
-    }
-
-    for (const vehicle of this.vehicles) {
-      const collision = playerCar.getCollisionWith(vehicle.car.polygon);
-
-      if (collision === null) {
+  private assessSubjectCollisions(subjectCars: readonly Car[]): void {
+    for (const subjectCar of subjectCars) {
+      if (subjectCar.damaged) {
         continue;
       }
 
-      playerCar.damage(collision);
-      return;
+      for (const vehicle of this.vehicles) {
+        const collision = subjectCar.getCollisionWith(vehicle.car.polygon);
+
+        if (collision === null) {
+          continue;
+        }
+
+        subjectCar.damage(collision);
+        break;
+      }
     }
   }
 
