@@ -1,5 +1,5 @@
-import type { Segment } from '../collision/geometry';
-import { clamp, remapClamped } from '../utils/math';
+import type { EnvironmentSegment, Point, Segment } from '../collision/geometry';
+import { clamp, normalizeAngle, remapClamped } from '../utils/math';
 import { THEME } from '../utils/visualTheme';
 import { clampLaneIndex, Lane } from './Lane';
 
@@ -21,6 +21,8 @@ export class Road {
   public readonly right: number;
   public readonly borders: readonly [number, number];
   public readonly borderSegments: readonly [Segment, Segment];
+  public readonly laneGuideSegments: readonly Segment[];
+  public readonly sensorSegments: readonly EnvironmentSegment[];
   private readonly lanes: Lane[];
 
   public constructor(
@@ -39,6 +41,11 @@ export class Road {
       createVerticalBorderSegment(this.left),
       createVerticalBorderSegment(this.right),
     ] as const;
+    this.laneGuideSegments = buildLaneGuideSegments(this.left, laneCount, laneWidth);
+    this.sensorSegments = buildSensorSegments(
+      this.borderSegments,
+      this.laneGuideSegments
+    );
     this.lanes = [];
 
     for (let laneIndex = 0; laneIndex < laneCount; laneIndex += 1) {
@@ -82,6 +89,42 @@ export class Road {
     }
 
     return clamp(this.getNearestLaneCenterOffset(x) / halfLaneWidth, -1, 1);
+  }
+
+  public getLaneDirectionAngle(_x: number, _y: number): number {
+    return 0;
+  }
+
+  public getHeadingErrorNormalized(
+    headingAngle: number,
+    x: number,
+    y: number
+  ): number {
+    const laneDirectionAngle = this.getLaneDirectionAngle(x, y);
+    const headingError = normalizeAngle(laneDirectionAngle - headingAngle);
+
+    return clamp(headingError / (Math.PI * 0.5), -1, 1);
+  }
+
+  public projectToLaneFrame(
+    originX: number,
+    originY: number,
+    targetX: number,
+    targetY: number
+  ): { forward: number; lateral: number } {
+    const directionAngle = this.getLaneDirectionAngle(originX, originY);
+    const directionVector = getDirectionVector(directionAngle);
+    const rightVector = {
+      x: -directionVector.y,
+      y: directionVector.x,
+    };
+    const deltaX = targetX - originX;
+    const deltaY = targetY - originY;
+
+    return {
+      forward: deltaX * directionVector.x + deltaY * directionVector.y,
+      lateral: deltaX * rightVector.x + deltaY * rightVector.y,
+    };
   }
 
   public getBorderProximitySignal(x: number): number {
@@ -209,9 +252,53 @@ function createVerticalBorderSegment(x: number): Segment {
   };
 }
 
+function buildLaneGuideSegments(
+  left: number,
+  laneCount: number,
+  laneWidth: number
+): Segment[] {
+  const segments: Segment[] = [];
+
+  for (let laneIndex = 1; laneIndex < laneCount; laneIndex += 1) {
+    segments.push(createVerticalBorderSegment(left + laneIndex * laneWidth));
+  }
+
+  return segments;
+}
+
+function buildSensorSegments(
+  borderSegments: readonly Segment[],
+  laneGuideSegments: readonly Segment[]
+): EnvironmentSegment[] {
+  const sensorSegments: EnvironmentSegment[] = [];
+
+  for (const segment of borderSegments) {
+    sensorSegments.push({
+      segment,
+      hitType: 'border',
+    });
+  }
+
+  for (const segment of laneGuideSegments) {
+    sensorSegments.push({
+      segment,
+      hitType: 'lane',
+    });
+  }
+
+  return sensorSegments;
+}
+
 function getStableDashOffset(visibleTop: number): number {
   const normalizedVisibleTop =
     ((visibleTop % DASH_CYCLE_LENGTH) + DASH_CYCLE_LENGTH) % DASH_CYCLE_LENGTH;
 
   return normalizedVisibleTop;
+}
+
+function getDirectionVector(angle: number): Point {
+  return {
+    x: -Math.sin(angle),
+    y: -Math.cos(angle),
+  };
 }

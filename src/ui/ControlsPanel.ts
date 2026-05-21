@@ -131,7 +131,7 @@ export class ControlsPanel {
         <div class="controls-panel__status-row"><span>Traffic</span><span data-field="active-traffic-summary"></span></div>
       </div>
       <p class="controls-panel__feedback" data-field="feedback"></p>
-      <p class="controls-panel__hint">Keys: P pause, R restart, 1-4 speed, [ ] population, - / = mutation</p>
+      <p class="controls-panel__hint">Keys: H help, P pause, R restart, 1-4 speed, [ ] population, - / = mutation</p>
       <p class="controls-panel__hint">Traffic changes are armed immediately and applied on restart/new generation.</p>
     `;
 

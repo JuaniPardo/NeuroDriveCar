@@ -68,6 +68,23 @@ export interface PopulationStats {
   mutationAmount: number;
 }
 
+export interface FitnessDiagnosticSnapshot {
+  totalFitness: number;
+  progressReward: number;
+  survivalReward: number;
+  forwardSpeedReward: number;
+  obstaclePenalty: number;
+  obstacleAvoidanceReward: number;
+  edgePenalty: number;
+  steeringPenalty: number;
+  laneOffsetPenalty: number;
+  laneRecoveryReward: number;
+  sustainedSteerPenalty: number;
+  lateralOffsetPenalty: number;
+  stagnationPenalty: number;
+  earlyCrashPenalty: number;
+}
+
 export class PopulationManager {
   private readonly road: Road;
   private readonly spawnX: number;
@@ -250,11 +267,16 @@ export class PopulationManager {
   }
 
   public updateSensors(
-    roadBorders: readonly Segment[],
-    trafficPolygons: readonly (readonly Point[])[]
+    trafficPolygons: readonly (readonly Point[])[],
+    trafficCars: readonly Car[]
   ): void {
     for (let index = 0; index < this.cars.length; index += 1) {
-      this.cars[index].updateSensors(roadBorders, trafficPolygons);
+      this.cars[index].updateSensors(
+        this.road.sensorSegments,
+        trafficPolygons,
+        this.road,
+        trafficCars
+      );
     }
   }
 
@@ -273,7 +295,7 @@ export class PopulationManager {
       this.updateLaneRecoverySignal(index, car, deltaTimeSeconds);
       this.updateSustainedSteeringSignal(index, car, deltaTimeSeconds);
 
-      const frontObstacleSignal = getFrontObstacleSignal(car.getSensorReadings());
+      const frontObstacleSignal = car.getSensorAwarenessSnapshot().frontObstacleSignal;
 
       if (frontObstacleSignal > FRONT_OBSTACLE_SIGNAL_THRESHOLD) {
         this.frontObstaclePenaltyByCar[index] +=
@@ -415,6 +437,16 @@ export class PopulationManager {
     return this.stats;
   }
 
+  public isGenomeCompatible(genome: BrainGenome): boolean {
+    const referenceBrain = this.cars[0]?.brain;
+
+    return referenceBrain?.canImportGenome(genome) ?? false;
+  }
+
+  public getBestCarFitnessSnapshot(): FitnessDiagnosticSnapshot {
+    return this.getFitnessSnapshotForIndex(this.stats.bestCarIndex);
+  }
+
   private renderBestCarHighlight(
     ctx: CanvasRenderingContext2D,
     car: Car,
@@ -487,50 +519,7 @@ export class PopulationManager {
   }
 
   private calculateFitnessScore(index: number, car: Car): number {
-    const progress = this.progressByCar[index];
-    const survivalBonus = this.survivalTimeByCar[index] * FITNESS_SURVIVAL_BONUS;
-    const earlyCrashPenalty =
-      car.damaged &&
-      this.survivalTimeByCar[index] < FITNESS_EARLY_CRASH_WINDOW_SECONDS
-        ? (FITNESS_EARLY_CRASH_WINDOW_SECONDS - this.survivalTimeByCar[index]) *
-          FITNESS_EARLY_CRASH_PENALTY
-        : 0;
-    const lateralOffsetPenalty =
-      this.lateralOffsetByCar[index] * FITNESS_LATERAL_OFFSET_PENALTY;
-    const steeringPenalty =
-      this.steeringEffortByCar[index] * FITNESS_STEERING_PENALTY;
-    const stagnationPenalty =
-      this.lowSpeedTimeByCar[index] * FITNESS_STAGNATION_PENALTY;
-    const forwardSpeedBonus =
-      this.forwardSpeedByCar[index] * FITNESS_FORWARD_SPEED_BONUS;
-    const edgePenalty =
-      this.edgeExposureByCar[index] * FITNESS_EDGE_PROXIMITY_PENALTY;
-    const laneOffsetPenalty =
-      this.laneOffsetByCar[index] * FITNESS_LANE_OFFSET_PENALTY;
-    const laneRecoveryReward =
-      this.laneRecoveryRewardByCar[index] * FITNESS_LANE_RECOVERY_REWARD;
-    const sustainedSteerPenalty =
-      this.sustainedSteerPenaltyByCar[index] * FITNESS_SUSTAINED_STEER_PENALTY;
-    const frontObstaclePenalty =
-      this.frontObstaclePenaltyByCar[index] * FITNESS_FRONT_OBSTACLE_PENALTY;
-    const obstacleAvoidanceReward =
-      this.obstacleAvoidanceRewardByCar[index] * FITNESS_SAFE_AVOIDANCE_REWARD;
-
-    return (
-      progress +
-      survivalBonus -
-      edgePenalty -
-      laneOffsetPenalty -
-      earlyCrashPenalty -
-      frontObstaclePenalty -
-      lateralOffsetPenalty -
-      steeringPenalty -
-      sustainedSteerPenalty -
-      stagnationPenalty +
-      forwardSpeedBonus +
-      laneRecoveryReward +
-      obstacleAvoidanceReward
-    );
+    return this.getFitnessSnapshotForIndex(index, car).totalFitness;
   }
 
   private isBetterCandidate(
@@ -641,24 +630,72 @@ export class PopulationManager {
 
     this.previousSteerSignByCar[index] = steerSign;
   }
+
+  private getFitnessSnapshotForIndex(
+    index: number,
+    car: Car = this.cars[index]
+  ): FitnessDiagnosticSnapshot {
+    const progressReward = this.progressByCar[index];
+    const survivalReward = this.survivalTimeByCar[index] * FITNESS_SURVIVAL_BONUS;
+    const earlyCrashPenalty =
+      car.damaged &&
+      this.survivalTimeByCar[index] < FITNESS_EARLY_CRASH_WINDOW_SECONDS
+        ? (FITNESS_EARLY_CRASH_WINDOW_SECONDS - this.survivalTimeByCar[index]) *
+          FITNESS_EARLY_CRASH_PENALTY
+        : 0;
+    const lateralOffsetPenalty =
+      this.lateralOffsetByCar[index] * FITNESS_LATERAL_OFFSET_PENALTY;
+    const steeringPenalty =
+      this.steeringEffortByCar[index] * FITNESS_STEERING_PENALTY;
+    const stagnationPenalty =
+      this.lowSpeedTimeByCar[index] * FITNESS_STAGNATION_PENALTY;
+    const forwardSpeedReward =
+      this.forwardSpeedByCar[index] * FITNESS_FORWARD_SPEED_BONUS;
+    const edgePenalty =
+      this.edgeExposureByCar[index] * FITNESS_EDGE_PROXIMITY_PENALTY;
+    const laneOffsetPenalty =
+      this.laneOffsetByCar[index] * FITNESS_LANE_OFFSET_PENALTY;
+    const laneRecoveryReward =
+      this.laneRecoveryRewardByCar[index] * FITNESS_LANE_RECOVERY_REWARD;
+    const sustainedSteerPenalty =
+      this.sustainedSteerPenaltyByCar[index] * FITNESS_SUSTAINED_STEER_PENALTY;
+    const obstaclePenalty =
+      this.frontObstaclePenaltyByCar[index] * FITNESS_FRONT_OBSTACLE_PENALTY;
+    const obstacleAvoidanceReward =
+      this.obstacleAvoidanceRewardByCar[index] * FITNESS_SAFE_AVOIDANCE_REWARD;
+
+    return {
+      totalFitness:
+        progressReward +
+        survivalReward -
+        edgePenalty -
+        laneOffsetPenalty -
+        earlyCrashPenalty -
+        obstaclePenalty -
+        lateralOffsetPenalty -
+        steeringPenalty -
+        sustainedSteerPenalty -
+        stagnationPenalty +
+        forwardSpeedReward +
+        laneRecoveryReward +
+        obstacleAvoidanceReward,
+      progressReward,
+      survivalReward,
+      forwardSpeedReward,
+      obstaclePenalty,
+      obstacleAvoidanceReward,
+      edgePenalty,
+      steeringPenalty,
+      laneOffsetPenalty,
+      laneRecoveryReward,
+      sustainedSteerPenalty,
+      lateralOffsetPenalty,
+      stagnationPenalty,
+      earlyCrashPenalty,
+    };
+  }
 }
 
 function clampMutationAmount(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
-}
-
-function getFrontObstacleSignal(sensorReadings: readonly number[]): number {
-  if (sensorReadings.length === 0) {
-    return 0;
-  }
-
-  const centerIndex = Math.floor(sensorReadings.length * 0.5);
-  const leftIndex = Math.max(0, centerIndex - 1);
-  const rightIndex = Math.min(sensorReadings.length - 1, centerIndex + 1);
-
-  return Math.max(
-    sensorReadings[leftIndex] ?? 0,
-    sensorReadings[centerIndex] ?? 0,
-    sensorReadings[rightIndex] ?? 0
-  );
 }

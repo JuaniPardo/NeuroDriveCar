@@ -10,6 +10,13 @@ export interface Segment {
   end: Point;
 }
 
+export type SensorHitType = 'border' | 'lane' | 'traffic';
+
+export interface EnvironmentSegment {
+  segment: Segment;
+  hitType: Exclude<SensorHitType, 'traffic'>;
+}
+
 export interface Intersection {
   x: number;
   y: number;

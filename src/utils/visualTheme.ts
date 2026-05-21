@@ -67,7 +67,11 @@ export const THEME = {
   sensor: {
     activeRayColor: 'rgba(142, 255, 228, 0.5)',
     blockedRayColor: 'rgba(255, 120, 120, 0.22)',
+    laneBlockedRayColor: 'rgba(127, 224, 196, 0.2)',
+    trafficBlockedRayColor: 'rgba(255, 120, 120, 0.22)',
     hitPointColor: '#ffe19a',
+    laneHitPointColor: '#7fe0c4',
+    trafficHitPointColor: '#ffe19a',
     labelColor: 'rgba(223, 242, 233, 0.72)',
     originColor: 'rgba(143, 225, 255, 0.9)',
   },

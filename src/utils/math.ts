@@ -37,3 +37,17 @@ export function remapClamped(
 
   return lerp(outputMin, outputMax, alpha);
 }
+
+export function normalizeAngle(angle: number): number {
+  let normalizedAngle = angle;
+
+  while (normalizedAngle > Math.PI) {
+    normalizedAngle -= Math.PI * 2;
+  }
+
+  while (normalizedAngle < -Math.PI) {
+    normalizedAngle += Math.PI * 2;
+  }
+
+  return normalizedAngle;
+}

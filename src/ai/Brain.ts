@@ -12,6 +12,15 @@ const REVERSE_OUTPUT_THRESHOLD = 0.6;
 const STEER_INTENT_DEAD_ZONE = 0.1;
 const REVERSE_OBSTACLE_GATE_THRESHOLD = 0.7;
 
+// Input order: all normalized sensor rays first, then lane-aware inputs.
+export const BRAIN_LANE_AWARE_INPUT_LABELS = [
+  'laneCenterOffsetNormalized',
+  'headingErrorNormalized',
+  'currentLaneBlocked',
+  'leftLaneClear',
+  'rightLaneClear',
+] as const;
+
 export const BRAIN_OUTPUT_LABELS = [
   'forward',
   'left',
@@ -23,6 +32,7 @@ export type BrainOutputLabel = (typeof BRAIN_OUTPUT_LABELS)[number];
 
 export interface BrainSnapshot {
   readonly inputs: readonly number[];
+  readonly inputLabels: readonly string[];
   readonly outputs: readonly number[];
   readonly visualOutputs: readonly number[];
   readonly outputLabels: readonly BrainOutputLabel[];
@@ -74,7 +84,7 @@ export class Brain {
     const leftVisual = visualOutputs[1] ?? 0;
     const rightVisual = visualOutputs[2] ?? 0;
     const reverseVisual = visualOutputs[3] ?? 0;
-    const frontObstacleSignal = getFrontSensorSignal(sensorInputs);
+    const frontObstacleSignal = getCurrentLaneBlockedInput(sensorInputs);
     const forward =
       forwardVisual > reverseVisual &&
       forwardVisual > FORWARD_OUTPUT_THRESHOLD;
@@ -100,11 +110,15 @@ export class Brain {
     };
   }
 
-  public getSnapshot(sensorInputs: readonly number[]): BrainSnapshot {
+  public getSnapshot(
+    sensorInputs: readonly number[],
+    inputLabels: readonly string[]
+  ): BrainSnapshot {
     const network = this.network.getSnapshot();
 
     return {
       inputs: sensorInputs,
+      inputLabels,
       outputs: this.lastOutputs,
       visualOutputs:
         network.layers[network.layers.length - 1]?.visualOutputs ?? this.lastOutputs,
@@ -150,18 +164,28 @@ export class Brain {
   }
 }
 
-function getFrontSensorSignal(sensorInputs: readonly number[]): number {
-  if (sensorInputs.length === 0) {
+export function getBrainInputCount(sensorRayCount: number): number {
+  return sensorRayCount + BRAIN_LANE_AWARE_INPUT_LABELS.length;
+}
+
+export function getBrainInputLabels(sensorRayCount: number): string[] {
+  const labels: string[] = [];
+
+  for (let index = 0; index < sensorRayCount; index += 1) {
+    labels.push(`sensorRay${index + 1}`);
+  }
+
+  labels.push(...BRAIN_LANE_AWARE_INPUT_LABELS);
+
+  return labels;
+}
+
+function getCurrentLaneBlockedInput(inputs: readonly number[]): number {
+  const index = inputs.length - 3;
+
+  if (index < 0) {
     return 0;
   }
 
-  const centerIndex = Math.floor(sensorInputs.length * 0.5);
-  const leftIndex = Math.max(0, centerIndex - 1);
-  const rightIndex = Math.min(sensorInputs.length - 1, centerIndex + 1);
-
-  return Math.max(
-    sensorInputs[leftIndex] ?? 0,
-    sensorInputs[centerIndex] ?? 0,
-    sensorInputs[rightIndex] ?? 0
-  );
+  return inputs[index] ?? 0;
 }

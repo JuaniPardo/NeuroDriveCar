@@ -15,10 +15,12 @@ import {
 export const BEST_BRAIN_STORAGE_KEY = 'neuroDriveCar.bestBrain.v1';
 export const TRAFFIC_SETTINGS_STORAGE_KEY = 'neuroDriveCar.trafficSettings.v1';
 const SAVED_BRAIN_VERSION = 1;
+const BRAIN_SCHEMA_VERSION = 2;
 const SAVED_TRAFFIC_SETTINGS_VERSION = 1;
 
 export interface SavedBrainRecord {
   version: typeof SAVED_BRAIN_VERSION;
+  brainSchemaVersion?: typeof BRAIN_SCHEMA_VERSION;
   savedAt: number;
   bestDistance: number;
   genome: BrainGenome;
@@ -52,6 +54,7 @@ export function saveBestBrain(
 
   const record: SavedBrainRecord = {
     version: SAVED_BRAIN_VERSION,
+    brainSchemaVersion: BRAIN_SCHEMA_VERSION,
     savedAt: Date.now(),
     bestDistance: Math.max(0, bestDistance),
     genome,

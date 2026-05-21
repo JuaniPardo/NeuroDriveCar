@@ -30,7 +30,13 @@ export class NeuralVisualizer {
     ctx.fillStyle = THEME.neural.panelTitleColor;
     ctx.fillText('NEURAL VISUALIZER', x + 16, y + 14);
     ctx.fillStyle = THEME.neural.panelSubtitleColor;
-    ctx.fillText('inputs / hidden / outputs', x + 16, y + 32);
+    ctx.fillText(
+      snapshot === null
+        ? 'inputs / hidden / outputs'
+        : `${snapshot.inputs.length} inputs / hidden / outputs`,
+      x + 16,
+      y + 32
+    );
 
     if (snapshot === null) {
       ctx.fillStyle = THEME.neural.outputLabelColor;

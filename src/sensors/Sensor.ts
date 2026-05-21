@@ -1,9 +1,10 @@
 import {
+  type EnvironmentSegment,
+  getSegmentIntersection,
   getNearestPolygonSegmentIntersection,
-  getNearestSegmentIntersection,
   type Intersection,
   type Point,
-  type Segment,
+  type SensorHitType,
 } from '../collision/geometry';
 import { FONT_MONO, THEME } from '../utils/visualTheme';
 import { createRay, type Ray, updateRay } from './Ray';
@@ -21,6 +22,14 @@ export interface SensorConfig {
 
 export interface SensorReading extends Intersection {
   value: number;
+  hitType: SensorHitType;
+}
+
+export interface SensorHitSummary {
+  border: number;
+  lane: number;
+  traffic: number;
+  none: number;
 }
 
 export const DEFAULT_SENSOR_CONFIG: SensorConfig = {
@@ -63,14 +72,14 @@ export class Sensor {
     originX: number,
     originY: number,
     headingAngle: number,
-    roadBorders: readonly Segment[],
+    environmentSegments: readonly EnvironmentSegment[],
     trafficPolygons: readonly (readonly Point[])[]
   ): void {
     this.castRays(originX, originY, headingAngle);
 
     for (let index = 0; index < this.rays.length; index += 1) {
       const ray = this.rays[index];
-      const reading = this.getClosestReading(ray, roadBorders, trafficPolygons);
+      const reading = this.getClosestReading(ray, environmentSegments, trafficPolygons);
 
       this.readings[index] = reading;
       this.normalizedReadings[index] = reading === null ? 0 : reading.value;
@@ -105,13 +114,13 @@ export class Sensor {
       ctx.stroke();
 
       if (reading !== null) {
-        ctx.strokeStyle = THEME.sensor.blockedRayColor;
+        ctx.strokeStyle = getBlockedRayColor(reading.hitType);
         ctx.beginPath();
         ctx.moveTo(reading.x, reading.y);
         ctx.lineTo(ray.end.x, ray.end.y);
         ctx.stroke();
 
-        ctx.fillStyle = THEME.sensor.hitPointColor;
+        ctx.fillStyle = getHitPointColor(reading.hitType);
         ctx.beginPath();
         ctx.arc(
           reading.x,
@@ -139,6 +148,26 @@ export class Sensor {
     }
 
     return hitCount;
+  }
+
+  public getHitSummary(): SensorHitSummary {
+    const summary: SensorHitSummary = {
+      border: 0,
+      lane: 0,
+      traffic: 0,
+      none: 0,
+    };
+
+    for (const reading of this.readings) {
+      if (reading === null) {
+        summary.none += 1;
+        continue;
+      }
+
+      summary[reading.hitType] += 1;
+    }
+
+    return summary;
   }
 
   private castRays(
@@ -180,10 +209,10 @@ export class Sensor {
 
   private getClosestReading(
     ray: Ray,
-    roadBorders: readonly Segment[],
+    environmentSegments: readonly EnvironmentSegment[],
     trafficPolygons: readonly (readonly Point[])[]
   ): SensorReading | null {
-    let closestIntersection = getNearestSegmentIntersection(ray, roadBorders);
+    let closestIntersection = getNearestTypedSegmentIntersection(ray, environmentSegments);
 
     for (const polygon of trafficPolygons) {
       const intersection = getNearestPolygonSegmentIntersection(polygon, ray);
@@ -196,7 +225,11 @@ export class Sensor {
         closestIntersection === null ||
         intersection.offset < closestIntersection.offset
       ) {
-        closestIntersection = intersection;
+        closestIntersection = {
+          ...intersection,
+          hitType: 'traffic',
+          value: 1 - intersection.offset,
+        };
       }
     }
 
@@ -204,10 +237,7 @@ export class Sensor {
       return null;
     }
 
-    return {
-      ...closestIntersection,
-      value: 1 - closestIntersection.offset,
-    };
+    return closestIntersection;
   }
 
   private renderRayLabels(
@@ -238,6 +268,55 @@ export class Sensor {
       valueLabelY
     );
   }
+}
+
+function getNearestTypedSegmentIntersection(
+  ray: Ray,
+  environmentSegments: readonly EnvironmentSegment[]
+): SensorReading | null {
+  let closestReading: SensorReading | null = null;
+
+  for (const candidate of environmentSegments) {
+    const intersection = getSegmentIntersection(ray, candidate.segment);
+
+    if (intersection === null) {
+      continue;
+    }
+
+    if (closestReading === null || intersection.offset < closestReading.offset) {
+      closestReading = {
+        ...intersection,
+        hitType: candidate.hitType,
+        value: 1 - intersection.offset,
+      };
+    }
+  }
+
+  return closestReading;
+}
+
+function getBlockedRayColor(hitType: SensorHitType): string {
+  if (hitType === 'traffic') {
+    return THEME.sensor.trafficBlockedRayColor;
+  }
+
+  if (hitType === 'lane') {
+    return THEME.sensor.laneBlockedRayColor;
+  }
+
+  return THEME.sensor.blockedRayColor;
+}
+
+function getHitPointColor(hitType: SensorHitType): string {
+  if (hitType === 'traffic') {
+    return THEME.sensor.trafficHitPointColor;
+  }
+
+  if (hitType === 'lane') {
+    return THEME.sensor.laneHitPointColor;
+  }
+
+  return THEME.sensor.hitPointColor;
 }
 
 function degreesToRadians(angleDeg: number): number {

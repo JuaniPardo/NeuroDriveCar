@@ -30,6 +30,7 @@ interface TrafficVehicle {
 export class TrafficManager {
   private readonly road: Road;
   private readonly vehicles: TrafficVehicle[] = [];
+  private readonly trafficCars: Car[] = [];
   private readonly trafficPolygons: Point[][] = [];
   private settings: ResolvedTrafficSettings = resolveTrafficSettings(
     DEFAULT_TRAFFIC_SETTINGS
@@ -128,6 +129,10 @@ export class TrafficManager {
     return this.trafficPolygons;
   }
 
+  public getTrafficCars(): readonly Car[] {
+    return this.trafficCars;
+  }
+
   public setSettings(settings: TrafficSettings): void {
     this.settings = resolveTrafficSettings(settings);
   }
@@ -204,6 +209,7 @@ export class TrafficManager {
         car,
         laneIndex,
       });
+      this.trafficCars.push(car);
       this.trafficPolygons.push(car.polygon);
     }
   }
@@ -310,6 +316,7 @@ export class TrafficManager {
     }
 
     this.vehicles.length = 0;
+    this.trafficCars.length = 0;
     this.trafficPolygons.length = 0;
   }
 

@@ -1,4 +1,5 @@
 import {
+  type EnvironmentSegment,
   getPolygonIntersection,
   getPolygonSegmentIntersection,
   type Intersection,
@@ -6,14 +7,21 @@ import {
   type Segment,
 } from '../collision/geometry';
 import {
+  getBrainInputCount,
+  getBrainInputLabels,
   Brain,
   BRAIN_OUTPUT_LABELS,
   type BrainOutputDebugSnapshot,
 } from '../ai/Brain';
 import type { BrainSnapshot } from '../ai/Brain';
-import { Sensor, type SensorConfig } from '../sensors/Sensor';
+import {
+  Sensor,
+  type SensorConfig,
+  type SensorHitSummary,
+} from '../sensors/Sensor';
 import { clamp, lerp } from '../utils/math';
 import { THEME } from '../utils/visualTheme';
+import { Road } from '../world/Road';
 import { Controls } from './Controls';
 import {
   DEFAULT_CAR_PHYSICS,
@@ -31,6 +39,24 @@ const COLLISION_POINT_RADIUS = 4;
 const SENSOR_FORWARD_OFFSET_RATIO = 0.18;
 const DEFAULT_AI_STEERING_SMOOTHING = 0.18;
 const DEFAULT_AI_STEERING_STRENGTH = 0.58;
+const CURRENT_LANE_BLOCKED_DISTANCE = 160;
+const ADJACENT_LANE_AHEAD_CLEARANCE_DISTANCE = 190;
+const ADJACENT_LANE_REAR_CLEARANCE_DISTANCE = 96;
+
+export interface LaneAwarenessSnapshot {
+  laneCenterOffsetNormalized: number;
+  headingErrorNormalized: number;
+  currentLaneBlocked: number;
+  leftLaneClear: number;
+  rightLaneClear: number;
+}
+
+export interface SensorAwarenessSnapshot {
+  frontObstacleDistance: number | null;
+  frontObstacleSignal: number;
+  edgeProximity: number;
+  hitSummary: SensorHitSummary;
+}
 
 export interface SteeringDebugSnapshot {
   leftOutput: number;
@@ -104,6 +130,26 @@ export class Car {
   private readonly aiControl: AIControlConfig;
   private appearance: CarAppearance;
   private smoothedAiSteerIntent = 0;
+  private readonly brainInputs: number[] = [];
+  private readonly brainInputLabels: string[] = [];
+  private laneAwareness: LaneAwarenessSnapshot = {
+    laneCenterOffsetNormalized: 0,
+    headingErrorNormalized: 0,
+    currentLaneBlocked: 0,
+    leftLaneClear: 0,
+    rightLaneClear: 0,
+  };
+  private sensorAwareness: SensorAwarenessSnapshot = {
+    frontObstacleDistance: null,
+    frontObstacleSignal: 0,
+    edgeProximity: 0,
+    hitSummary: {
+      border: 0,
+      lane: 0,
+      traffic: 0,
+      none: 0,
+    },
+  };
 
   public constructor(
     x: number,
@@ -134,15 +180,22 @@ export class Car {
         : null;
     this.brain =
       this.controlMode === 'ai' && this.sensor !== null
-        ? new Brain(this.sensor.normalizedReadings.length)
+        ? new Brain(getBrainInputCount(this.sensor.normalizedReadings.length))
         : null;
+
+    if (this.sensor !== null) {
+      this.brainInputLabels.push(
+        ...getBrainInputLabels(this.sensor.normalizedReadings.length)
+      );
+      this.brainInputs.push(...new Array(this.brainInputLabels.length).fill(0));
+    }
 
     if (this.controlMode === 'player') {
       this.controls.attach();
     }
 
     this.updatePolygon();
-    this.updateSensors([], []);
+    this.updateSensors([], [], null, []);
   }
 
   public destroy(): void {
@@ -160,7 +213,7 @@ export class Car {
     this.smoothedAiSteerIntent = 0;
     this.controls.clear();
     this.updatePolygon();
-    this.updateSensors([], []);
+    this.updateSensors([], [], null, []);
     this.syncBrainToSensors();
   }
 
@@ -338,8 +391,10 @@ export class Car {
   }
 
   public updateSensors(
-    roadBorders: readonly Segment[],
-    trafficPolygons: readonly (readonly Point[])[]
+    roadSegments: readonly EnvironmentSegment[],
+    trafficPolygons: readonly (readonly Point[])[],
+    road: Road | null,
+    trafficCars: readonly Car[] = []
   ): void {
     if (this.sensor === null) {
       return;
@@ -350,9 +405,10 @@ export class Car {
       sensorOrigin.x,
       sensorOrigin.y,
       this.angle,
-      roadBorders,
+      roadSegments,
       trafficPolygons
     );
+    this.updateAwarenessSnapshots(road, trafficCars);
     this.syncBrainToSensors();
   }
 
@@ -365,7 +421,7 @@ export class Car {
       return null;
     }
 
-    return this.brain.getSnapshot(this.sensor.normalizedReadings);
+    return this.brain.getSnapshot(this.brainInputs, this.brainInputLabels);
   }
 
   public getBrainOutputDebugLabel(): string {
@@ -423,6 +479,14 @@ export class Car {
 
   public getSensorHitCount(): number {
     return this.sensor?.getHitCount() ?? 0;
+  }
+
+  public getLaneAwarenessSnapshot(): Readonly<LaneAwarenessSnapshot> {
+    return this.laneAwareness;
+  }
+
+  public getSensorAwarenessSnapshot(): Readonly<SensorAwarenessSnapshot> {
+    return this.sensorAwareness;
   }
 
   public getDistanceToNearestRoadBorder(
@@ -620,7 +684,7 @@ export class Car {
       return;
     }
 
-    this.controls.applyState(this.brain.decide(this.sensor.normalizedReadings));
+    this.controls.applyState(this.brain.decide(this.brainInputs));
   }
 
   private getSteeringInput(): number {
@@ -639,6 +703,189 @@ export class Car {
     );
 
     return this.smoothedAiSteerIntent * this.aiControl.steeringStrength;
+  }
+
+  private updateAwarenessSnapshots(
+    road: Road | null,
+    trafficCars: readonly Car[]
+  ): void {
+    this.updateLaneAwareness(road, trafficCars);
+    this.updateSensorAwareness(road);
+    this.updateBrainInputs();
+  }
+
+  private updateLaneAwareness(
+    road: Road | null,
+    trafficCars: readonly Car[]
+  ): void {
+    if (road === null) {
+      this.laneAwareness = {
+        laneCenterOffsetNormalized: 0,
+        headingErrorNormalized: 0,
+        currentLaneBlocked: 0,
+        leftLaneClear: 0,
+        rightLaneClear: 0,
+      };
+      return;
+    }
+
+    const currentLaneIndex = road.getNearestLaneIndex(this.x);
+
+    this.laneAwareness = {
+      laneCenterOffsetNormalized: road.getNearestLaneCenterOffsetNormalized(this.x),
+      headingErrorNormalized: road.getHeadingErrorNormalized(this.angle, this.x, this.y),
+      currentLaneBlocked: this.getLaneBlockSignal(
+        road,
+        currentLaneIndex,
+        trafficCars,
+        CURRENT_LANE_BLOCKED_DISTANCE
+      ),
+      leftLaneClear: this.getAdjacentLaneClearSignal(
+        road,
+        currentLaneIndex - 1,
+        trafficCars
+      ),
+      rightLaneClear: this.getAdjacentLaneClearSignal(
+        road,
+        currentLaneIndex + 1,
+        trafficCars
+      ),
+    };
+  }
+
+  private updateSensorAwareness(road: Road | null): void {
+    if (this.sensor === null) {
+      return;
+    }
+
+    const centerIndex = Math.floor(this.sensor.readings.length * 0.5);
+    const candidateIndexes = [
+      Math.max(0, centerIndex - 1),
+      centerIndex,
+      Math.min(this.sensor.readings.length - 1, centerIndex + 1),
+    ];
+    let frontObstacleDistance: number | null = null;
+
+    for (const index of candidateIndexes) {
+      const reading = this.sensor.readings[index];
+
+      if (reading === null || reading.hitType !== 'traffic') {
+        continue;
+      }
+
+      const hitDistance =
+        reading.offset *
+        Math.hypot(
+          this.sensor.rays[index].end.x - this.sensor.rays[index].start.x,
+          this.sensor.rays[index].end.y - this.sensor.rays[index].start.y
+        );
+
+      if (frontObstacleDistance === null || hitDistance < frontObstacleDistance) {
+        frontObstacleDistance = hitDistance;
+      }
+    }
+
+    this.sensorAwareness = {
+      frontObstacleDistance,
+      frontObstacleSignal:
+        frontObstacleDistance === null
+          ? 0
+          : clamp(1 - frontObstacleDistance / CURRENT_LANE_BLOCKED_DISTANCE, 0, 1),
+      edgeProximity: road === null ? 0 : road.getBorderProximitySignal(this.x),
+      hitSummary: this.sensor.getHitSummary(),
+    };
+  }
+
+  private updateBrainInputs(): void {
+    if (this.sensor === null) {
+      return;
+    }
+
+    let inputIndex = 0;
+
+    for (const reading of this.sensor.normalizedReadings) {
+      this.brainInputs[inputIndex] = reading;
+      inputIndex += 1;
+    }
+
+    this.brainInputs[inputIndex] = this.laneAwareness.laneCenterOffsetNormalized;
+    inputIndex += 1;
+    this.brainInputs[inputIndex] = this.laneAwareness.headingErrorNormalized;
+    inputIndex += 1;
+    this.brainInputs[inputIndex] = this.laneAwareness.currentLaneBlocked;
+    inputIndex += 1;
+    this.brainInputs[inputIndex] = this.laneAwareness.leftLaneClear;
+    inputIndex += 1;
+    this.brainInputs[inputIndex] = this.laneAwareness.rightLaneClear;
+  }
+
+  private getLaneBlockSignal(
+    road: Road,
+    laneIndex: number,
+    trafficCars: readonly Car[],
+    blockedDistance: number
+  ): number {
+    let nearestForwardDistance = Number.POSITIVE_INFINITY;
+
+    for (const trafficCar of trafficCars) {
+      if (trafficCar.damaged || road.getNearestLaneIndex(trafficCar.x) !== laneIndex) {
+        continue;
+      }
+
+      const relativePosition = road.projectToLaneFrame(
+        this.x,
+        this.y,
+        trafficCar.x,
+        trafficCar.y
+      );
+
+      if (relativePosition.forward <= 0) {
+        continue;
+      }
+
+      nearestForwardDistance = Math.min(
+        nearestForwardDistance,
+        relativePosition.forward
+      );
+    }
+
+    if (!Number.isFinite(nearestForwardDistance)) {
+      return 0;
+    }
+
+    return nearestForwardDistance <= blockedDistance ? 1 : 0;
+  }
+
+  private getAdjacentLaneClearSignal(
+    road: Road,
+    laneIndex: number,
+    trafficCars: readonly Car[]
+  ): number {
+    if (laneIndex < 0 || laneIndex >= road.laneCount) {
+      return 0;
+    }
+
+    for (const trafficCar of trafficCars) {
+      if (trafficCar.damaged || road.getNearestLaneIndex(trafficCar.x) !== laneIndex) {
+        continue;
+      }
+
+      const relativePosition = road.projectToLaneFrame(
+        this.x,
+        this.y,
+        trafficCar.x,
+        trafficCar.y
+      );
+
+      if (
+        relativePosition.forward <= ADJACENT_LANE_AHEAD_CLEARANCE_DISTANCE &&
+        relativePosition.forward >= -ADJACENT_LANE_REAR_CLEARANCE_DISTANCE
+      ) {
+        return 0;
+      }
+    }
+
+    return 1;
   }
 
   private refreshAppearance(): void {

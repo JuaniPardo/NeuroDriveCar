@@ -53,6 +53,7 @@ const POPULATION_DECREASE_KEY = '[';
 const POPULATION_INCREASE_KEY = ']';
 const MUTATION_DECREASE_KEY = '-';
 const MUTATION_INCREASE_KEY = '=';
+const TOGGLE_HELP_KEY = 'h';
 const DEFAULT_RUNNING_SPEED: RunningSimulationSpeed = 1;
 const DEFAULT_POPULATION_SIZE: PopulationSizeOption = 25;
 const DEFAULT_MUTATION_RATE: MutationRateOption = 0.2;
@@ -98,6 +99,7 @@ export class Game implements Updatable, Renderable {
     selectedMutationRate: DEFAULT_MUTATION_RATE,
     lastActionMessage: 'Simulation ready.',
   };
+  private showHudHelp = false;
 
   public constructor(container: HTMLElement) {
     this.container = container;
@@ -170,6 +172,7 @@ export class Game implements Updatable, Renderable {
 
     this.resize();
     this.synchronizeSimulationWorld();
+    this.handleSavedBrainCompatibility();
     this.camera.reset(this.populationSpawnX, this.populationSpawnY);
     this.followTargetX = this.populationSpawnX;
     this.followTargetY = this.populationSpawnY;
@@ -212,6 +215,8 @@ export class Game implements Updatable, Renderable {
     const bestCar = this.populationManager.getBestCar();
     const populationStats = this.populationManager.getStats();
     const steeringDebug = bestCar.getSteeringDebugSnapshot();
+    const laneAwareness = bestCar.getLaneAwarenessSnapshot();
+    const sensorAwareness = bestCar.getSensorAwarenessSnapshot();
 
     ctx.clearRect(0, 0, this.width, this.height);
     this.renderBackground(ctx);
@@ -225,22 +230,19 @@ export class Game implements Updatable, Renderable {
       damaged: bestCar.damaged,
       traveledDistance: populationStats.bestProgress,
       trafficCount: this.trafficManager.getActiveCount(),
-      trafficTargetSpeed: this.trafficManager.getTargetSpeed(),
       laneSpeedLabel: this.trafficManager.getLaneSpeedDebugLabel(),
       activeTrafficSettings: this.activeTrafficSettings,
       selectedTrafficSettings: this.selectedTrafficSettings,
       steeringDebug,
-      laneCenterOffset: this.road.getNearestLaneCenterOffsetNormalized(bestCar.x),
-      edgeProximity: this.road.getBorderProximitySignal(bestCar.x),
-      sensorHitCount: bestCar.getSensorHitCount(),
+      laneAwareness,
+      sensorAwareness,
       sensorReadings: bestCar.getSensorReadings(),
-      controlState: bestCar.getControlState(),
       brainSnapshot: bestCar.getBrainSnapshot(),
+      fitness: this.populationManager.getBestCarFitnessSnapshot(),
       populationSize: populationStats.populationSize,
       aliveCount: populationStats.aliveCount,
       crashedCount: populationStats.crashedCount,
       bestCarIndex: populationStats.bestCarIndex,
-      bestProgress: populationStats.bestProgress,
       generation: populationStats.generation,
       paused: this.controlState.paused,
       simulationSpeed: this.getSimulationSpeedMultiplier(),
@@ -248,10 +250,12 @@ export class Game implements Updatable, Renderable {
       selectedMutationRate: this.controlState.selectedMutationRate,
       lastControlAction: this.controlState.lastActionMessage,
       savedBrainExists: this.savedBrainRecord !== null,
+      savedBrainCompatible: this.isSavedBrainCompatible(),
       savedBestDistance: this.savedBrainRecord?.bestDistance ?? null,
       populationSource: populationStats.populationSource,
       mutationAmount: populationStats.mutationAmount,
       persistenceMessage: this.persistenceMessage,
+      showHelp: this.showHudHelp,
     });
     this.controlsPanel.render({
       ...this.getControlSnapshot(),
@@ -319,6 +323,15 @@ export class Game implements Updatable, Renderable {
     if (key === PAUSE_KEY) {
       event.preventDefault();
       this.togglePause();
+      return;
+    }
+
+    if (key === TOGGLE_HELP_KEY) {
+      event.preventDefault();
+      this.showHudHelp = !this.showHudHelp;
+      this.controlState.lastActionMessage = this.showHudHelp
+        ? 'HUD help expanded.'
+        : 'HUD help collapsed.';
       return;
     }
 
@@ -446,6 +459,16 @@ export class Game implements Updatable, Renderable {
       return;
     }
 
+    if (!this.populationManager.isGenomeCompatible(savedRecord.genome)) {
+      this.populationManager.setSeedGenome(null);
+      this.persistenceMessage =
+        'Saved brain incompatible with current AI inputs. Random seed active.';
+      this.controlState.lastActionMessage =
+        'Saved brain incompatible. Loaded random population instead.';
+      this.restartSimulation(this.controlState.lastActionMessage);
+      return;
+    }
+
     this.populationManager.setSeedGenome(savedRecord.genome);
     this.restartSimulation(`Loaded saved brain @ ${savedRecord.bestDistance.toFixed(1)}.`);
   }
@@ -512,8 +535,8 @@ export class Game implements Updatable, Renderable {
     };
     this.trafficManager.reset(this.populationManager.getBestCar());
     this.populationManager.updateSensors(
-      this.road.borderSegments,
-      this.trafficManager.getTrafficPolygons()
+      this.trafficManager.getTrafficPolygons(),
+      this.trafficManager.getTrafficCars()
     );
     this.populationManager.updateTrainingSignals(0, this.road.borderSegments);
     this.populationManager.refreshStats();
@@ -533,8 +556,8 @@ export class Game implements Updatable, Renderable {
       this.populationManager.getCars()
     );
     this.populationManager.updateSensors(
-      this.road.borderSegments,
-      this.trafficManager.getTrafficPolygons()
+      this.trafficManager.getTrafficPolygons(),
+      this.trafficManager.getTrafficCars()
     );
     this.populationManager.updateTrainingSignals(
       deltaTimeSeconds,
@@ -743,6 +766,26 @@ export class Game implements Updatable, Renderable {
 
     this.selectedTrafficSettings = saveTrafficSettings(nextSettings);
     this.controlState.lastActionMessage = message;
+  }
+
+  private handleSavedBrainCompatibility(): void {
+    if (this.savedBrainRecord === null || this.isSavedBrainCompatible()) {
+      return;
+    }
+
+    this.populationManager.setSeedGenome(null);
+    this.persistenceMessage =
+      'Saved brain incompatible with current AI inputs. Random seed active.';
+    this.controlState.lastActionMessage =
+      'Saved brain kept on disk but not loaded into this run.';
+  }
+
+  private isSavedBrainCompatible(): boolean {
+    if (this.savedBrainRecord === null) {
+      return false;
+    }
+
+    return this.populationManager.isGenomeCompatible(this.savedBrainRecord.genome);
   }
 }
 
