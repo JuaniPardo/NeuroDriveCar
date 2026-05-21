@@ -11,7 +11,7 @@ const PANEL_ALERT_COLOR = '#ff8a75';
 const PANEL_OK_COLOR = '#cde7d5';
 const PANEL_AI_COLOR = '#8fe1ff';
 const PANEL_TITLE = 'NEURODRIVECAR / MVP 09';
-const SENSOR_DECIMALS = 2;
+const SENSOR_STRIP_HEIGHT = 16;
 const STATUS_LINE_HEIGHT = 28;
 const STATUS_TOP_PADDING = 14;
 const STATUS_SECTION_GAP = 6;
@@ -101,7 +101,8 @@ export class Hud {
     const line11Y = line10Y + compactLineHeight;
     const line12Y = line11Y + compactLineHeight;
     const line13Y = line12Y + compactLineHeight;
-    const sensorStripY = line13Y + compactLineHeight + 10;
+    const sensorLabelY = line13Y + compactLineHeight + 8;
+    const sensorStripY = sensorLabelY + 18;
 
     ctx.save();
     ctx.fillStyle = PANEL_BACKGROUND_COLOR;
@@ -138,9 +139,10 @@ export class Hud {
     ctx.fillText(`T SPEED ${data.trafficTargetSpeed.toFixed(1)}`, textX, line13Y);
 
     ctx.fillStyle = PANEL_MUTED_TEXT_COLOR;
-    ctx.fillText(`L SPD ${data.laneSpeedLabel}`, textX, sensorStripY - 50);
-    ctx.fillText(`S HIT ${data.sensorHitCount}`, textX, sensorStripY - 28);
-    ctx.fillText(`CTRL ${formatControlState(data.controlState)}`, textX, sensorStripY - 6);
+    ctx.fillText(`L SPD ${data.laneSpeedLabel}`, textX, sensorLabelY - 44);
+    ctx.fillText(`S HIT ${data.sensorHitCount}`, textX, sensorLabelY - 22);
+    ctx.fillText(`CTRL ${formatControlState(data.controlState)}`, textX, sensorLabelY);
+    ctx.fillText('SENSORS', textX, sensorLabelY + 18);
 
     this.renderSensorStrip(ctx, x + 12, sensorStripY, width - 24, data.sensorReadings);
 
@@ -155,9 +157,9 @@ export class Hud {
     sensorReadings: readonly number[]
   ): void {
     const slotCount = Math.max(1, sensorReadings.length);
-    const gap = 5;
+    const gap = 4;
     const slotWidth = (width - gap * (slotCount - 1)) / slotCount;
-    const slotHeight = 22;
+    const slotHeight = SENSOR_STRIP_HEIGHT;
 
     for (let index = 0; index < slotCount; index += 1) {
       const reading = sensorReadings[index] ?? 0;
@@ -171,19 +173,7 @@ export class Hud {
       ctx.fillRect(slotX, slotY + (slotHeight - fillHeight), slotWidth, fillHeight);
       ctx.strokeStyle = 'rgba(127, 224, 196, 0.28)';
       ctx.strokeRect(slotX + 0.5, slotY + 0.5, slotWidth - 1, slotHeight - 1);
-
-      ctx.fillStyle = PANEL_TEXT_COLOR;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      ctx.font = '9px "SF Mono", Monaco, monospace';
-      ctx.fillText(
-        reading.toFixed(SENSOR_DECIMALS),
-        slotX + slotWidth * 0.5,
-        slotY + slotHeight + 4
-      );
     }
-
-    ctx.textAlign = 'left';
   }
 }
 

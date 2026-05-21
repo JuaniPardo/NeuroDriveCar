@@ -5,12 +5,15 @@ import type { Point, Segment } from '../collision/geometry';
 const DEFAULT_POPULATION_SIZE = 25;
 const POPULATION_CAR_WIDTH = 42;
 const POPULATION_CAR_HEIGHT = 74;
-const NON_BEST_CAR_OPACITY = 0.24;
-const DAMAGED_CAR_OPACITY = 0.16;
+const NON_BEST_CAR_OPACITY = 0.52;
+const DAMAGED_CAR_OPACITY = 0.24;
 const BEST_CAR_RING_COLOR = 'rgba(143, 225, 255, 0.95)';
 const BEST_CAR_LABEL_COLOR = 'rgba(223, 245, 255, 0.92)';
 const BEST_CAR_RING_RADIUS_PADDING = 16;
 const BEST_CAR_LABEL_OFFSET = 54;
+const NON_BEST_RING_COLOR = 'rgba(109, 200, 255, 0.38)';
+const AGENT_MARKER_COLOR = 'rgba(143, 225, 255, 0.82)';
+const AGENT_MARKER_RADIUS = 3.5;
 
 export interface PopulationManagerOptions {
   spawnX: number;
@@ -166,6 +169,12 @@ export class PopulationManager {
         renderSensors: false,
         renderDebug: false,
       });
+
+      if (!car.damaged) {
+        this.renderGhostHighlight(ctx, car);
+        this.renderAgentMarker(ctx, car, index);
+      }
+
       ctx.restore();
     }
 
@@ -208,6 +217,32 @@ export class PopulationManager {
     ctx.textBaseline = 'bottom';
     ctx.fillText(`BEST ${index + 1}`, car.x, car.y - BEST_CAR_LABEL_OFFSET);
     ctx.restore();
+  }
+
+  private renderGhostHighlight(ctx: CanvasRenderingContext2D, car: Car): void {
+    const radius = Math.max(car.width, car.height) * 0.5 + 10;
+
+    ctx.strokeStyle = NON_BEST_RING_COLOR;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(car.x, car.y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  private renderAgentMarker(
+    ctx: CanvasRenderingContext2D,
+    car: Car,
+    index: number
+  ): void {
+    const angle = index * 0.85;
+    const radius = 30 + (index % 3) * 7;
+    const markerX = car.x + Math.cos(angle) * radius;
+    const markerY = car.y + Math.sin(angle) * radius;
+
+    ctx.fillStyle = AGENT_MARKER_COLOR;
+    ctx.beginPath();
+    ctx.arc(markerX, markerY, AGENT_MARKER_RADIUS, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   private clear(): void {
