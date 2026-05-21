@@ -1,10 +1,17 @@
+import { cloneBrainGenome } from '../ai/mutation';
+import { PopulationManager } from '../population/PopulationManager';
+import { TrafficManager } from '../traffic/TrafficManager';
+import { Hud } from '../ui/Hud';
+import {
+  deleteBestBrain,
+  loadBestBrain,
+  saveBestBrain,
+  type SavedBrainRecord,
+} from '../utils/storage';
+import { Road } from '../world/Road';
 import { Camera } from './Camera';
 import { Loop } from './Loop';
 import type { Renderable, Updatable } from './types';
-import { Road } from '../world/Road';
-import { TrafficManager } from '../traffic/TrafficManager';
-import { Hud } from '../ui/Hud';
-import { PopulationManager } from '../population/PopulationManager';
 
 const BACKGROUND_TOP_COLOR = '#081114';
 const BACKGROUND_BOTTOM_COLOR = '#020507';
@@ -14,6 +21,10 @@ const HORIZON_LINE_COLOR = 'rgba(120, 195, 169, 0.08)';
 const POPULATION_LANE_INDEX = 1;
 const POPULATION_SIZE = 25;
 const RESTART_KEY = 'r';
+const SAVE_BRAIN_KEY = 's';
+const LOAD_BRAIN_KEY = 'l';
+const DELETE_BRAIN_KEY = 'd';
+const RANDOM_POPULATION_MESSAGE = 'Random population active.';
 
 export class Game implements Updatable, Renderable {
   private readonly container: HTMLElement;
@@ -35,6 +46,8 @@ export class Game implements Updatable, Renderable {
   private framesPerSecond = 0;
   private followTargetX = 0;
   private followTargetY = 0;
+  private savedBrainRecord: SavedBrainRecord | null = null;
+  private persistenceMessage = RANDOM_POPULATION_MESSAGE;
 
   public constructor(container: HTMLElement) {
     this.container = container;
@@ -51,12 +64,14 @@ export class Game implements Updatable, Renderable {
     this.road = new Road();
     this.camera = new Camera();
     this.hud = new Hud();
+    this.refreshSavedBrainState(true);
     this.populationSpawnX = this.road.getLaneCenter(POPULATION_LANE_INDEX);
     this.populationSpawnY = 0;
     this.populationManager = new PopulationManager({
       spawnX: this.populationSpawnX,
       spawnY: this.populationSpawnY,
       populationSize: POPULATION_SIZE,
+      seedGenome: this.savedBrainRecord?.genome ?? null,
     });
     this.trafficManager = new TrafficManager(this.road);
     this.resizeObserver = () => {
@@ -110,14 +125,9 @@ export class Game implements Updatable, Renderable {
 
     this.followTargetX = bestCar.x;
     this.followTargetY = bestCar.y;
-    this.camera.follow(
-      this.followTargetX,
-      this.followTargetY,
-      deltaTimeSeconds
-    );
+    this.camera.follow(this.followTargetX, this.followTargetY, deltaTimeSeconds);
 
-    const instantFramesPerSecond =
-      deltaTimeSeconds > 0 ? 1 / deltaTimeSeconds : 0;
+    const instantFramesPerSecond = deltaTimeSeconds > 0 ? 1 / deltaTimeSeconds : 0;
 
     if (this.framesPerSecond === 0) {
       this.framesPerSecond = instantFramesPerSecond;
@@ -157,6 +167,11 @@ export class Game implements Updatable, Renderable {
       bestCarIndex: populationStats.bestCarIndex,
       bestProgress: populationStats.bestProgress,
       generation: populationStats.generation,
+      savedBrainExists: this.savedBrainRecord !== null,
+      savedBestDistance: this.savedBrainRecord?.bestDistance ?? null,
+      populationSource: populationStats.populationSource,
+      mutationAmount: populationStats.mutationAmount,
+      persistenceMessage: this.persistenceMessage,
     });
   }
 
@@ -189,8 +204,7 @@ export class Game implements Updatable, Renderable {
   private renderWorld(ctx: CanvasRenderingContext2D): void {
     const screenCenterX = this.width * 0.5;
     const screenAnchorY = this.height * 0.78;
-    const visibleTop =
-      this.camera.y - screenAnchorY - WORLD_RENDER_BUFFER;
+    const visibleTop = this.camera.y - screenAnchorY - WORLD_RENDER_BUFFER;
     const visibleBottom =
       this.camera.y + (this.height - screenAnchorY) + WORLD_RENDER_BUFFER;
 
@@ -206,16 +220,37 @@ export class Game implements Updatable, Renderable {
   }
 
   private handleKeyCommand(event: KeyboardEvent): void {
+    if (event.repeat) {
+      return;
+    }
+
     const key = event.key.toLowerCase();
+
+    if (key === SAVE_BRAIN_KEY) {
+      event.preventDefault();
+      this.saveCurrentBestBrain();
+      return;
+    }
+
+    if (key === LOAD_BRAIN_KEY) {
+      event.preventDefault();
+      this.loadSavedBrainIntoPopulation();
+      return;
+    }
+
+    if (key === DELETE_BRAIN_KEY) {
+      event.preventDefault();
+      this.deleteSavedBrainAndReset();
+      return;
+    }
 
     if (key === RESTART_KEY) {
       event.preventDefault();
       this.restartSimulation();
-      return;
     }
   }
 
-  private restartSimulation(): void {
+  private restartSimulation(nextMessage?: string): void {
     this.populationManager.reset();
     this.trafficManager.reset(this.populationManager.getBestCar());
     this.populationManager.updateSensors(
@@ -227,6 +262,102 @@ export class Game implements Updatable, Renderable {
     this.followTargetX = this.populationSpawnX;
     this.followTargetY = this.populationSpawnY;
     this.framesPerSecond = 0;
+
+    if (nextMessage !== undefined) {
+      this.persistenceMessage = nextMessage;
+      return;
+    }
+
+    this.updatePersistenceMessageForCurrentSeed();
+  }
+
+  private saveCurrentBestBrain(): void {
+    const genome = this.populationManager.getBestBrainGenome();
+
+    if (genome === null) {
+      this.persistenceMessage = 'No AI brain available to save.';
+      return;
+    }
+
+    const bestDistance = this.populationManager.getStats().bestProgress;
+    const savedRecord = saveBestBrain(cloneBrainGenome(genome), bestDistance);
+
+    if (savedRecord === null) {
+      this.persistenceMessage = 'localStorage unavailable. Save skipped.';
+      return;
+    }
+
+    this.savedBrainRecord = savedRecord;
+    this.populationManager.setSeedGenome(savedRecord.genome);
+    this.persistenceMessage = `Saved best brain @ ${bestDistance.toFixed(1)}.`;
+  }
+
+  private loadSavedBrainIntoPopulation(): void {
+    const savedRecord = this.refreshSavedBrainState(true);
+
+    if (savedRecord === null) {
+      this.populationManager.setSeedGenome(null);
+      this.restartSimulation('No saved brain found. Random seed loaded.');
+      return;
+    }
+
+    this.populationManager.setSeedGenome(savedRecord.genome);
+    this.restartSimulation(`Loaded saved brain @ ${savedRecord.bestDistance.toFixed(1)}.`);
+  }
+
+  private deleteSavedBrainAndReset(): void {
+    deleteBestBrain();
+    this.savedBrainRecord = null;
+    this.populationManager.setSeedGenome(null);
+    this.restartSimulation('Saved brain deleted. Random seed loaded.');
+  }
+
+  private refreshSavedBrainState(clearInvalid: boolean): SavedBrainRecord | null {
+    const result = loadBestBrain();
+
+    if (result.status === 'loaded') {
+      this.savedBrainRecord = {
+        ...result.record,
+        genome: cloneBrainGenome(result.record.genome),
+      };
+
+      return this.savedBrainRecord;
+    }
+
+    if (result.status === 'invalid' && clearInvalid) {
+      deleteBestBrain();
+      this.persistenceMessage = 'Corrupted saved brain cleared.';
+    } else if (result.status === 'unavailable') {
+      this.persistenceMessage = 'localStorage unavailable. Random seed active.';
+    } else if (result.status === 'missing') {
+      this.persistenceMessage = RANDOM_POPULATION_MESSAGE;
+    }
+
+    this.savedBrainRecord = null;
+
+    return null;
+  }
+
+  private updatePersistenceMessageForCurrentSeed(): void {
+    if (
+      this.populationManager.getStats().populationSource === 'saved' &&
+      this.savedBrainRecord !== null
+    ) {
+      this.persistenceMessage = `Saved seed active @ ${this.savedBrainRecord.bestDistance.toFixed(1)}.`;
+      return;
+    }
+
+    if (this.savedBrainRecord !== null) {
+      this.persistenceMessage = `Saved brain ready @ ${this.savedBrainRecord.bestDistance.toFixed(1)}.`;
+      return;
+    }
+
+    if (this.persistenceMessage === 'Corrupted saved brain cleared.') {
+      this.persistenceMessage = 'Corrupted brain removed. Random seed active.';
+      return;
+    }
+
+    this.persistenceMessage = RANDOM_POPULATION_MESSAGE;
   }
 
   private renderWorldBackdrop(

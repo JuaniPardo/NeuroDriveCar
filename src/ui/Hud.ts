@@ -1,6 +1,7 @@
 import type { BrainSnapshot } from '../ai/Brain';
 import type { CarControlMode } from '../car/Car';
 import type { ControlState } from '../car/Controls';
+import type { PopulationSource } from '../population/PopulationManager';
 import { NeuralVisualizer } from './NeuralVisualizer';
 
 const PANEL_BACKGROUND_COLOR = 'rgba(4, 12, 15, 0.84)';
@@ -10,7 +11,7 @@ const PANEL_MUTED_TEXT_COLOR = '#9db7aa';
 const PANEL_ALERT_COLOR = '#ff8a75';
 const PANEL_OK_COLOR = '#cde7d5';
 const PANEL_AI_COLOR = '#8fe1ff';
-const PANEL_TITLE = 'NEURODRIVECAR / MVP 09';
+const PANEL_TITLE = 'NEURODRIVECAR / MVP 10';
 const SENSOR_STRIP_HEIGHT = 16;
 const STATUS_LINE_HEIGHT = 22;
 const STATUS_TOP_PADDING = 14;
@@ -42,6 +43,11 @@ export interface HudRenderData {
   bestCarIndex: number;
   bestProgress: number;
   generation: number;
+  savedBrainExists: boolean;
+  savedBestDistance: number | null;
+  populationSource: PopulationSource;
+  mutationAmount: number;
+  persistenceMessage: string;
 }
 
 export class Hud {
@@ -56,9 +62,9 @@ export class Hud {
     const statusPanelX = margin;
     const statusPanelY = margin;
     const statusPanelWidth = Math.min(340, Math.max(304, data.width * 0.26));
-    const statusPanelHeight = 520;
+    const statusPanelHeight = 612;
     const instructionsPanelY = statusPanelY + statusPanelHeight + 12;
-    const instructionsPanelHeight = 94;
+    const instructionsPanelHeight = 112;
     const neuralPanelWidth = Math.min(420, Math.max(320, data.width * 0.22));
     const neuralPanelHeight = Math.min(360, Math.max(300, data.height * 0.34));
     const neuralPanelX = data.width - neuralPanelWidth - margin;
@@ -181,6 +187,57 @@ export class Hud {
     this.renderDivider(ctx, x + 12, x + width - 12, cursorY);
     cursorY += STATUS_SECTION_GAP;
 
+    this.renderSectionLabel(ctx, textX, cursorY, 'PERSISTENCE');
+    cursorY += STATUS_LINE_HEIGHT - 2;
+    this.renderKeyValueRow(
+      ctx,
+      textX,
+      valueX,
+      cursorY,
+      'SAVED',
+      data.savedBrainExists ? 'YES' : 'NO',
+      data.savedBrainExists ? PANEL_OK_COLOR : PANEL_MUTED_TEXT_COLOR
+    );
+    cursorY += STATUS_LINE_HEIGHT;
+    this.renderKeyValueRow(
+      ctx,
+      textX,
+      valueX,
+      cursorY,
+      'SRC',
+      data.populationSource.toUpperCase()
+    );
+    cursorY += STATUS_LINE_HEIGHT;
+    this.renderKeyValueRow(
+      ctx,
+      textX,
+      valueX,
+      cursorY,
+      'MUT',
+      data.mutationAmount.toFixed(2)
+    );
+    cursorY += STATUS_LINE_HEIGHT;
+    this.renderKeyValueRow(
+      ctx,
+      textX,
+      valueX,
+      cursorY,
+      'S BEST',
+      data.savedBestDistance === null ? '--' : data.savedBestDistance.toFixed(1)
+    );
+    cursorY += STATUS_LINE_HEIGHT;
+    this.renderKeyValueRow(
+      ctx,
+      textX,
+      valueX,
+      cursorY,
+      'IO',
+      truncateStatusMessage(data.persistenceMessage, 28)
+    );
+    cursorY += STATUS_LINE_HEIGHT;
+    this.renderDivider(ctx, x + 12, x + width - 12, cursorY);
+    cursorY += STATUS_SECTION_GAP;
+
     this.renderSectionLabel(ctx, textX, cursorY, 'TRAFFIC');
     cursorY += STATUS_LINE_HEIGHT - 2;
     this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'COUNT', String(data.trafficCount));
@@ -256,6 +313,7 @@ export class Hud {
     const line2Y = line1Y + 24;
     const line3Y = line2Y + 18;
     const line4Y = line3Y + 18;
+    const line5Y = line4Y + 18;
 
     ctx.save();
     ctx.fillStyle = PANEL_BACKGROUND_COLOR;
@@ -271,9 +329,10 @@ export class Hud {
 
     ctx.fillStyle = INSTRUCTIONS_TEXT_COLOR;
     ctx.font = '9px "SF Mono", Monaco, monospace';
-    ctx.fillText('Best brain is auto-saved in localStorage.', textX, line2Y);
-    ctx.fillText('Reload or press R to restart from the saved champion.', textX, line3Y);
-    ctx.fillText('Population cars mutate around the current best genome.', textX, line4Y);
+    ctx.fillText('S save best brain   L load saved brain', textX, line2Y);
+    ctx.fillText('D delete saved brain   R restart current seed', textX, line3Y);
+    ctx.fillText('Saved seeds keep one exact car plus mutated variants.', textX, line4Y);
+    ctx.fillText('Only neural brain data is persisted to localStorage.', textX, line5Y);
     ctx.restore();
   }
 
@@ -319,5 +378,13 @@ function getVelocityDirectionLabel(speed: number): string {
     return 'STOP';
   }
 
-  return speed > 0 ? 'FORWARD' : 'REVERSE';
+  return speed > 0 ? 'FWD' : 'REV';
+}
+
+function truncateStatusMessage(value: string, maxLength: number): string {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, Math.max(0, maxLength - 1))}…`;
 }

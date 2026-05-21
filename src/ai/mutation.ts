@@ -21,15 +21,23 @@ export function cloneBrainGenome(genome: BrainGenome): BrainGenome {
   };
 }
 
+export function createMutatedGenome(
+  genome: BrainGenome,
+  mutationAmount: number
+): BrainGenome {
+  const nextGenome = cloneBrainGenome(genome);
+
+  mutateNetworkSnapshot(nextGenome.network, mutationAmount);
+
+  return nextGenome;
+}
+
 export function applyMutatedGenome(
   brain: Brain,
   genome: BrainGenome,
   mutationAmount: number
 ): void {
-  const nextGenome = cloneBrainGenome(genome);
-
-  mutateNetworkSnapshot(nextGenome.network, mutationAmount);
-  brain.importGenome(nextGenome);
+  brain.importGenome(createMutatedGenome(genome, mutationAmount));
 }
 
 function cloneNetworkSnapshot(

@@ -1,5 +1,5 @@
 import type { BrainGenome } from '../ai/Brain';
-import { applyMutatedGenome, cloneBrainGenome } from '../ai/mutation';
+import { cloneBrainGenome, createMutatedGenome } from '../ai/mutation';
 import { Car } from '../car/Car';
 import { DEFAULT_CAR_PHYSICS } from '../car/Physics';
 import type { Point, Segment } from '../collision/geometry';
@@ -16,17 +16,19 @@ const BEST_CAR_LABEL_OFFSET = 54;
 const NON_BEST_RING_COLOR = 'rgba(109, 200, 255, 0.38)';
 const AGENT_MARKER_COLOR = 'rgba(143, 225, 255, 0.82)';
 const AGENT_MARKER_RADIUS = 3.5;
-const BEST_BRAIN_STORAGE_KEY = 'neuroDriveCar.bestBrain';
-const BEST_PROGRESS_STORAGE_KEY = 'neuroDriveCar.bestProgress';
 const DEFAULT_MUTATION_AMOUNT = 0.18;
 const STALL_PROGRESS_EPSILON = 0.25;
 const STALL_TIMEOUT_SECONDS = 2.5;
+
+export type PopulationSource = 'random' | 'saved';
 
 export interface PopulationManagerOptions {
   spawnX: number;
   spawnY: number;
   populationSize?: number;
   generation?: number;
+  mutationAmount?: number;
+  seedGenome?: BrainGenome | null;
 }
 
 export interface PopulationStats {
@@ -36,27 +38,30 @@ export interface PopulationStats {
   bestCarIndex: number;
   bestProgress: number;
   generation: number;
+  populationSource: PopulationSource;
+  mutationAmount: number;
 }
 
 export class PopulationManager {
   private readonly spawnX: number;
   private readonly spawnY: number;
   private readonly populationSize: number;
+  private readonly mutationAmount: number;
   private readonly cars: Car[] = [];
   private readonly progressByCar: number[] = [];
   private readonly stallTimeByCar: number[] = [];
   private readonly stats: PopulationStats;
   private generation = 1;
-  private savedBestGenome: BrainGenome | null = null;
-  private savedBestProgress = 0;
+  private seedGenome: BrainGenome | null = null;
+  private populationSource: PopulationSource = 'random';
 
   public constructor(options: PopulationManagerOptions) {
     this.spawnX = options.spawnX;
     this.spawnY = options.spawnY;
     this.populationSize = Math.max(1, options.populationSize ?? DEFAULT_POPULATION_SIZE);
     this.generation = Math.max(1, options.generation ?? 1);
-    this.savedBestGenome = this.loadSavedBestGenome();
-    this.savedBestProgress = this.loadSavedBestProgress();
+    this.mutationAmount = Math.max(0, options.mutationAmount ?? DEFAULT_MUTATION_AMOUNT);
+    this.setSeedGenome(options.seedGenome ?? null);
     this.stats = {
       populationSize: this.populationSize,
       aliveCount: this.populationSize,
@@ -64,6 +69,8 @@ export class PopulationManager {
       bestCarIndex: 0,
       bestProgress: 0,
       generation: this.generation,
+      populationSource: this.populationSource,
+      mutationAmount: this.mutationAmount,
     };
 
     this.reset();
@@ -75,7 +82,7 @@ export class PopulationManager {
 
   public reset(): void {
     this.clear();
-    const seedGenome = this.savedBestGenome;
+    this.populationSource = this.seedGenome === null ? 'random' : 'saved';
 
     for (let index = 0; index < this.populationSize; index += 1) {
       const car = new Car(
@@ -89,16 +96,13 @@ export class PopulationManager {
         }
       );
 
-      if (seedGenome !== null && car.brain !== null) {
-        if (index === 0) {
-          car.brain.importGenome(cloneBrainGenome(seedGenome));
-        } else {
-          applyMutatedGenome(
-            car.brain,
-            seedGenome,
-            this.getMutationAmount(index)
-          );
-        }
+      if (this.seedGenome !== null && car.brain !== null) {
+        const genome =
+          index === 0
+            ? cloneBrainGenome(this.seedGenome)
+            : createMutatedGenome(this.seedGenome, this.getMutationAmount(index));
+
+        car.brain.importGenome(genome);
       }
 
       this.cars.push(car);
@@ -107,8 +111,15 @@ export class PopulationManager {
     }
 
     this.stats.generation = this.generation;
+    this.stats.populationSource = this.populationSource;
+    this.stats.mutationAmount = this.mutationAmount;
     this.refreshStats();
     this.generation += 1;
+  }
+
+  public setSeedGenome(genome: BrainGenome | null): void {
+    this.seedGenome = genome === null ? null : cloneBrainGenome(genome);
+    this.populationSource = this.seedGenome === null ? 'random' : 'saved';
   }
 
   public update(deltaTimeSeconds: number, roadBorders: readonly Segment[]): void {
@@ -197,7 +208,7 @@ export class PopulationManager {
     this.stats.crashedCount = this.cars.length - aliveCount;
     this.stats.bestCarIndex = selectedBestIndex;
     this.stats.bestProgress = selectedBestProgress;
-    this.persistBestCar(this.cars[selectedBestIndex], selectedBestProgress);
+    this.stats.populationSource = this.populationSource;
   }
 
   public render(ctx: CanvasRenderingContext2D): void {
@@ -238,6 +249,10 @@ export class PopulationManager {
 
   public getBestCar(): Car {
     return this.cars[this.stats.bestCarIndex];
+  }
+
+  public getBestBrainGenome(): BrainGenome | null {
+    return this.getBestCar().brain?.exportGenome() ?? null;
   }
 
   public getStats(): Readonly<PopulationStats> {
@@ -294,62 +309,14 @@ export class PopulationManager {
 
   private getMutationAmount(index: number): number {
     if (index <= 4) {
-      return DEFAULT_MUTATION_AMOUNT * 0.45;
+      return this.mutationAmount * 0.45;
     }
 
     if (index <= 12) {
-      return DEFAULT_MUTATION_AMOUNT * 0.8;
+      return this.mutationAmount * 0.8;
     }
 
-    return DEFAULT_MUTATION_AMOUNT;
-  }
-
-  private persistBestCar(car: Car, progress: number): void {
-    if (car.brain === null || progress <= this.savedBestProgress) {
-      return;
-    }
-
-    this.savedBestGenome = cloneBrainGenome(car.brain.exportGenome());
-    this.savedBestProgress = progress;
-
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    window.localStorage.setItem(
-      BEST_BRAIN_STORAGE_KEY,
-      JSON.stringify(this.savedBestGenome)
-    );
-    window.localStorage.setItem(BEST_PROGRESS_STORAGE_KEY, String(progress));
-  }
-
-  private loadSavedBestGenome(): BrainGenome | null {
-    if (typeof window === 'undefined') {
-      return null;
-    }
-
-    const rawGenome = window.localStorage.getItem(BEST_BRAIN_STORAGE_KEY);
-
-    if (rawGenome === null) {
-      return null;
-    }
-
-    try {
-      return JSON.parse(rawGenome) as BrainGenome;
-    } catch {
-      return null;
-    }
-  }
-
-  private loadSavedBestProgress(): number {
-    if (typeof window === 'undefined') {
-      return 0;
-    }
-
-    const rawProgress = window.localStorage.getItem(BEST_PROGRESS_STORAGE_KEY);
-    const parsedProgress = rawProgress === null ? Number.NaN : Number(rawProgress);
-
-    return Number.isFinite(parsedProgress) ? parsedProgress : 0;
+    return this.mutationAmount;
   }
 
   private clear(): void {
