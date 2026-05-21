@@ -14,6 +14,11 @@ import {
   type BrainOutputDebugSnapshot,
 } from '../ai/Brain';
 import type { BrainSnapshot } from '../ai/Brain';
+import type { DriverMode } from '../drivers/DriverMode';
+import {
+  HeuristicDriver,
+  type HeuristicDriverDebugSnapshot,
+} from '../drivers/HeuristicDriver';
 import {
   Sensor,
   type SensorConfig,
@@ -90,7 +95,7 @@ export interface DrivingIntentState {
   recoveryTrend: number;
 }
 
-export type CarControlMode = 'player' | 'ai' | 'traffic';
+export type CarControlMode = DriverMode | 'traffic';
 
 export interface CarAppearance {
   bodyColor: string;
@@ -143,6 +148,7 @@ export class Car {
   public readonly brain: Brain | null;
 
   private readonly controls: Controls;
+  private readonly heuristicDriver: HeuristicDriver | null;
   private readonly physics: CarPhysicsConfig;
   private controlMode: CarControlMode;
   private readonly trafficSpeed: number;
@@ -151,6 +157,7 @@ export class Car {
   private appearance: CarAppearance;
   private readonly brainInputs: number[] = [];
   private readonly brainInputLabels: string[] = [];
+  private lastRoadForAwareness: Road | null = null;
   private laneAwareness: LaneAwarenessSnapshot = {
     laneCenterOffsetNormalized: 0,
     laneOffsetDelta: 0,
@@ -178,6 +185,11 @@ export class Car {
     steeringDirection: 0,
     recoveryTrend: 0,
   };
+  private heuristicDebug: HeuristicDriverDebugSnapshot = {
+    reason: 'clear-forward',
+    targetLane: null,
+    targetLaneOffsetNormalized: 0,
+  };
 
   public constructor(
     x: number,
@@ -192,7 +204,7 @@ export class Car {
     this.width = width;
     this.height = height;
     this.physics = physics;
-    this.controlMode = options.controlMode ?? 'player';
+    this.controlMode = options.controlMode ?? 'manual';
     this.trafficSpeed = options.trafficSpeed ?? 0;
     this.appearanceOverrides = options.appearance ?? {};
     this.aiControl = {
@@ -210,6 +222,10 @@ export class Car {
       this.controlMode === 'ai' && this.sensor !== null
         ? new Brain(getBrainInputCount(this.sensor.normalizedReadings.length))
         : null;
+    this.heuristicDriver =
+      this.controlMode === 'heuristic' && this.sensor !== null
+        ? new HeuristicDriver()
+        : null;
 
     if (this.sensor !== null) {
       this.brainInputLabels.push(
@@ -218,7 +234,7 @@ export class Car {
       this.brainInputs.push(...new Array(this.brainInputLabels.length).fill(0));
     }
 
-    if (this.controlMode === 'player') {
+    if (this.controlMode === 'manual') {
       this.controls.attach();
     }
 
@@ -239,10 +255,16 @@ export class Car {
     this.damaged = false;
     this.collisionPoint = null;
     this.resetDrivingIntent();
+    this.heuristicDriver?.reset();
+    this.heuristicDebug = {
+      reason: 'clear-forward',
+      targetLane: null,
+      targetLaneOffsetNormalized: 0,
+    };
     this.controls.clear();
     this.updatePolygon();
     this.updateSensors([], [], null, []);
-    this.syncBrainToSensors();
+    this.syncDriverToSensors();
   }
 
   public update(deltaTimeSeconds: number, roadBorders: readonly Segment[] = []): void {
@@ -437,7 +459,6 @@ export class Car {
       trafficPolygons
     );
     this.updateAwarenessSnapshots(road, trafficCars);
-    this.syncBrainToSensors();
   }
 
   public getSensorReadings(): readonly number[] {
@@ -489,22 +510,33 @@ export class Car {
     };
   }
 
+  public getHeuristicDebugSnapshot(): Readonly<HeuristicDriverDebugSnapshot> {
+    return this.heuristicDebug;
+  }
+
   public setControlMode(controlMode: CarControlMode): void {
     if (this.controlMode === controlMode || controlMode === 'traffic') {
       return;
     }
 
-    if (this.controlMode === 'player') {
+    if (this.controlMode === 'manual') {
       this.controls.detach();
     }
 
     this.controlMode = controlMode;
     this.controls.clear();
+    this.resetDrivingIntent();
+    this.heuristicDriver?.reset();
+    this.heuristicDebug = {
+      reason: 'clear-forward',
+      targetLane: null,
+      targetLaneOffsetNormalized: 0,
+    };
 
-    if (controlMode === 'player') {
+    if (controlMode === 'manual') {
       this.controls.attach();
     } else {
-      this.syncBrainToSensors();
+      this.syncDriverToSensors();
     }
 
     this.refreshAppearance();
@@ -713,16 +745,46 @@ export class Car {
     ctx.restore();
   }
 
-  private syncBrainToSensors(): void {
-    if (this.controlMode !== 'ai' || this.brain === null || this.sensor === null) {
+  private syncDriverToSensors(): void {
+    if (this.sensor === null) {
       return;
     }
 
-    this.controls.applyState(this.brain.decide(this.brainInputs));
+    if (this.controlMode === 'ai' && this.brain !== null) {
+      this.controls.applyState(this.brain.decide(this.brainInputs));
+      return;
+    }
+
+    if (
+      this.controlMode !== 'heuristic' ||
+      this.heuristicDriver === null ||
+      this.lastRoadForAwareness === null
+    ) {
+      return;
+    }
+
+    this.controls.applyState(
+      this.heuristicDriver.decide({
+        x: this.x,
+        y: this.y,
+        angle: this.angle,
+        speed: this.speed,
+        road: this.lastRoadForAwareness,
+        laneCenterOffsetNormalized: this.laneAwareness.laneCenterOffsetNormalized,
+        headingErrorNormalized: this.laneAwareness.headingErrorNormalized,
+        currentLaneBlocked: this.laneAwareness.currentLaneBlocked,
+        leftLaneClear: this.laneAwareness.leftLaneClear,
+        rightLaneClear: this.laneAwareness.rightLaneClear,
+        frontObstacleDistance: this.sensorAwareness.frontObstacleDistance,
+        frontObstacleSignal: this.sensorAwareness.frontObstacleSignal,
+        edgeProximity: this.sensorAwareness.edgeProximity,
+      })
+    );
+    this.heuristicDebug = this.heuristicDriver.getDebugSnapshot();
   }
 
   private getSteeringInput(): number {
-    if (this.controlMode !== 'ai') {
+    if (this.controlMode === 'manual') {
       return Number(this.controls.right) - Number(this.controls.left);
     }
 
@@ -784,9 +846,11 @@ export class Car {
     road: Road | null,
     trafficCars: readonly Car[]
   ): void {
+    this.lastRoadForAwareness = road;
     this.updateLaneAwareness(road, trafficCars);
     this.updateSensorAwareness(road);
     this.updateBrainInputs();
+    this.syncDriverToSensors();
   }
 
   private updateLaneAwareness(
@@ -993,9 +1057,16 @@ export class Car {
       };
     }
 
-    if (controlMode !== 'ai') {
+    if (controlMode === 'manual') {
       return {
         ...DEFAULT_CAR_APPEARANCE,
+        ...this.appearanceOverrides,
+      };
+    }
+
+    if (controlMode === 'heuristic') {
+      return {
+        ...THEME.car.heuristic,
         ...this.appearanceOverrides,
       };
     }

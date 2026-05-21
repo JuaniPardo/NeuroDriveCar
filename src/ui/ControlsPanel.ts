@@ -1,3 +1,8 @@
+import {
+  DRIVER_MODE_OPTIONS,
+  formatDriverModeLabel,
+  type DriverMode,
+} from '../drivers/DriverMode';
 import type { PopulationSource } from '../population/PopulationManager';
 import {
   formatSimulationSpeedLabel,
@@ -27,6 +32,7 @@ interface ControlsPanelCallbacks {
   onSpeedChange: (speed: SimulationSpeedOption) => void;
   onPopulationSizeChange: (size: PopulationSizeOption) => void;
   onMutationRateChange: (rate: MutationRateOption) => void;
+  onDriverModeChange: (mode: DriverMode) => void;
   onTrafficEnabledChange: (enabled: boolean) => void;
   onTrafficPhaseChange: (phase: TrainingTrafficPhase) => void;
   onTrafficDensityChange: (density: TrafficDensity) => void;
@@ -35,6 +41,7 @@ interface ControlsPanelCallbacks {
 }
 
 export interface ControlsPanelSnapshot extends SimulationControlSnapshot {
+  selectedDriverMode: DriverMode;
   generation: number;
   activePopulationSize: number;
   activeMutationRate: number;
@@ -51,6 +58,7 @@ export class ControlsPanel {
   private readonly speedButtons = new Map<SimulationSpeedOption, HTMLButtonElement>();
   private readonly populationSizeSelect: HTMLSelectElement;
   private readonly mutationRateSelect: HTMLSelectElement;
+  private readonly driverModeSelect: HTMLSelectElement;
   private readonly trafficEnabledSelect: HTMLSelectElement;
   private readonly trafficPhaseSelect: HTMLSelectElement;
   private readonly trafficDensitySelect: HTMLSelectElement;
@@ -59,6 +67,7 @@ export class ControlsPanel {
   private readonly activeRunValue: HTMLSpanElement;
   private readonly activePopulationValue: HTMLSpanElement;
   private readonly activeMutationValue: HTMLSpanElement;
+  private readonly activeDriverValue: HTMLSpanElement;
   private readonly populationSourceValue: HTMLSpanElement;
   private readonly savedBrainValue: HTMLSpanElement;
   private readonly activeTrafficPhaseValue: HTMLSpanElement;
@@ -94,6 +103,10 @@ export class ControlsPanel {
         <select id="mutation-rate-select" class="controls-panel__select"></select>
       </div>
       <div class="controls-panel__section">
+        <label class="controls-panel__label" for="driver-mode-select">Driver Mode</label>
+        <select id="driver-mode-select" class="controls-panel__select"></select>
+      </div>
+      <div class="controls-panel__section">
         <p class="controls-panel__label">Traffic Settings</p>
         <div class="controls-panel__stack">
           <label class="controls-panel__field" for="traffic-phase-select">
@@ -125,13 +138,14 @@ export class ControlsPanel {
         <div class="controls-panel__status-row"><span>Run</span><span data-field="run"></span></div>
         <div class="controls-panel__status-row"><span>Active Pop</span><span data-field="active-population"></span></div>
         <div class="controls-panel__status-row"><span>Active Mut</span><span data-field="active-mutation"></span></div>
+        <div class="controls-panel__status-row"><span>Driver</span><span data-field="active-driver"></span></div>
         <div class="controls-panel__status-row"><span>Source</span><span data-field="population-source"></span></div>
         <div class="controls-panel__status-row"><span>Saved Brain</span><span data-field="saved-brain"></span></div>
         <div class="controls-panel__status-row"><span>Traffic Phase</span><span data-field="active-traffic-phase"></span></div>
         <div class="controls-panel__status-row"><span>Traffic</span><span data-field="active-traffic-summary"></span></div>
       </div>
       <p class="controls-panel__feedback" data-field="feedback"></p>
-      <p class="controls-panel__hint">Keys: H help, P pause, R restart, 1-4 speed, [ ] population, - / = mutation</p>
+      <p class="controls-panel__hint">Keys: H help, M driver, P pause, R restart, 1-4 speed, [ ] population, - / = mutation</p>
       <p class="controls-panel__hint">Traffic changes are armed immediately and applied on restart/new generation.</p>
     `;
 
@@ -150,6 +164,10 @@ export class ControlsPanel {
     this.mutationRateSelect = getRequiredElement<HTMLSelectElement>(
       this.root,
       '#mutation-rate-select'
+    );
+    this.driverModeSelect = getRequiredElement<HTMLSelectElement>(
+      this.root,
+      '#driver-mode-select'
     );
     this.trafficEnabledSelect = getRequiredElement<HTMLSelectElement>(
       this.root,
@@ -179,6 +197,10 @@ export class ControlsPanel {
     this.activeMutationValue = getRequiredElement<HTMLSpanElement>(
       this.root,
       '[data-field="active-mutation"]'
+    );
+    this.activeDriverValue = getRequiredElement<HTMLSpanElement>(
+      this.root,
+      '[data-field="active-driver"]'
     );
     this.populationSourceValue = getRequiredElement<HTMLSpanElement>(
       this.root,
@@ -232,6 +254,7 @@ export class ControlsPanel {
     this.restartButton.disabled = false;
     this.populationSizeSelect.value = String(snapshot.selectedPopulationSize);
     this.mutationRateSelect.value = snapshot.selectedMutationRate.toFixed(2);
+    this.driverModeSelect.value = snapshot.selectedDriverMode;
     this.trafficEnabledSelect.value = String(snapshot.selectedTrafficSettings.enabled);
     this.trafficPhaseSelect.value = snapshot.selectedTrafficSettings.phase;
     this.trafficDensitySelect.value = snapshot.selectedTrafficSettings.density;
@@ -240,6 +263,7 @@ export class ControlsPanel {
     this.activeRunValue.textContent = `GEN ${snapshot.generation}`;
     this.activePopulationValue.textContent = String(snapshot.activePopulationSize);
     this.activeMutationValue.textContent = snapshot.activeMutationRate.toFixed(2);
+    this.activeDriverValue.textContent = formatDriverModeLabel(snapshot.selectedDriverMode).toUpperCase();
     this.populationSourceValue.textContent = snapshot.populationSource.toUpperCase();
     this.savedBrainValue.textContent = snapshot.savedBrainExists ? 'READY' : 'NONE';
     this.activeTrafficPhaseValue.textContent = snapshot.activeTrafficSettings.phase.toUpperCase();
@@ -283,6 +307,13 @@ export class ControlsPanel {
       option.value = rate.toFixed(2);
       option.textContent = rate.toFixed(2);
       this.mutationRateSelect.append(option);
+    }
+
+    for (const mode of DRIVER_MODE_OPTIONS) {
+      const option = document.createElement('option');
+      option.value = mode;
+      option.textContent = formatDriverModeLabel(mode);
+      this.driverModeSelect.append(option);
     }
 
     for (const phase of TRAINING_TRAFFIC_PHASE_OPTIONS) {
@@ -378,6 +409,14 @@ export class ControlsPanel {
       return;
     }
 
+    if (target === this.driverModeSelect) {
+      if (isDriverMode(target.value)) {
+        this.callbacks.onDriverModeChange(target.value);
+      }
+
+      return;
+    }
+
     if (target === this.trafficEnabledSelect) {
       this.callbacks.onTrafficEnabledChange(target.value === 'true');
       return;
@@ -438,6 +477,10 @@ function isPopulationSizeOption(value: number): value is PopulationSizeOption {
 
 function isMutationRateOption(value: number): value is MutationRateOption {
   return MUTATION_RATE_OPTIONS.includes(value as MutationRateOption);
+}
+
+function isDriverMode(value: string): value is DriverMode {
+  return DRIVER_MODE_OPTIONS.includes(value as DriverMode);
 }
 
 function isTrainingTrafficPhase(value: string): value is TrainingTrafficPhase {

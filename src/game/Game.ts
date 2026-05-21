@@ -1,4 +1,11 @@
 import { cloneBrainGenome } from '../ai/mutation';
+import { Car } from '../car/Car';
+import {
+  DRIVER_MODE_OPTIONS,
+  formatDriverModeLabel,
+  type DriverMode,
+} from '../drivers/DriverMode';
+import { ImitationRecorder } from '../drivers/ImitationRecorder';
 import { PopulationManager } from '../population/PopulationManager';
 import {
   MUTATION_RATE_OPTIONS,
@@ -57,10 +64,26 @@ const TOGGLE_HELP_KEY = 'h';
 const TOGGLE_NEURAL_VISUALIZER_KEY = 'v';
 const TOGGLE_CONTROLS_KEY = 'c';
 const TOGGLE_ADVANCED_DIAGNOSTICS_KEY = 'd';
+const CYCLE_DRIVER_MODE_KEY = 'm';
 const DEFAULT_RUNNING_SPEED: RunningSimulationSpeed = 1;
 const DEFAULT_POPULATION_SIZE: PopulationSizeOption = 25;
 const DEFAULT_MUTATION_RATE: MutationRateOption = 0.2;
 const RANDOM_POPULATION_MESSAGE = 'Random population active.';
+const DRIVER_RENDER_LABEL_OFFSET = 58;
+const LOW_SPEED_THRESHOLD = 36;
+const FITNESS_PROGRESS_WEIGHT = 0.42;
+const FITNESS_SURVIVAL_BONUS = 16;
+const FITNESS_EARLY_CRASH_WINDOW_SECONDS = 6;
+const FITNESS_EARLY_CRASH_PENALTY = 120;
+const FITNESS_STEERING_PENALTY = 18;
+const FITNESS_STAGNATION_PENALTY = 48;
+const FITNESS_EDGE_PROXIMITY_PENALTY = 76;
+const FITNESS_FRONT_OBSTACLE_PENALTY = 58;
+const FITNESS_SAFE_AVOIDANCE_REWARD = 90;
+const FITNESS_LANE_OFFSET_PENALTY = 0.18;
+const FITNESS_LANE_RECOVERY_REWARD = 220;
+const FRONT_OBSTACLE_SIGNAL_THRESHOLD = 0.55;
+const FRONT_OBSTACLE_CLEAR_REWARD_DELTA = 0.16;
 
 interface SimulationControlState {
   paused: boolean;
@@ -68,6 +91,27 @@ interface SimulationControlState {
   selectedPopulationSize: PopulationSizeOption;
   selectedMutationRate: MutationRateOption;
   lastActionMessage: string;
+}
+
+interface DriverBenchmarkState {
+  progress: number;
+  survivalTime: number;
+  laneOffsetIntegral: number;
+  steeringEffortIntegral: number;
+  lowSpeedTime: number;
+  edgeExposure: number;
+  laneRecoveryReward: number;
+  frontObstaclePenalty: number;
+  obstacleAvoidanceReward: number;
+  previousLaneOffset: number;
+  previousFrontObstacleSignal: number;
+}
+
+interface DriverBenchmarkSnapshot {
+  progress: number;
+  survivalTime: number;
+  fitness: number;
+  alive: boolean;
 }
 
 export class Game implements Updatable, Renderable {
@@ -79,9 +123,12 @@ export class Game implements Updatable, Renderable {
   private readonly road: Road;
   private readonly camera: Camera;
   private readonly populationManager: PopulationManager;
+  private readonly heuristicCar: Car;
+  private readonly manualCar: Car;
   private readonly trafficManager: TrafficManager;
   private readonly hud: Hud;
   private readonly controlsPanel: ControlsPanel;
+  private readonly imitationRecorder = new ImitationRecorder();
   private readonly populationSpawnX: number;
   private readonly populationSpawnY: number;
   private readonly keyCommandListener: (event: KeyboardEvent) => void;
@@ -95,6 +142,8 @@ export class Game implements Updatable, Renderable {
   private persistenceMessage = RANDOM_POPULATION_MESSAGE;
   private selectedTrafficSettings: TrafficSettings = loadTrafficSettings();
   private activeTrafficSettings: TrafficSettings = loadTrafficSettings();
+  private selectedDriverMode: DriverMode = 'ai';
+  private heuristicBenchmark: DriverBenchmarkState = createDriverBenchmarkState();
   private readonly controlState: SimulationControlState = {
     paused: false,
     runningSpeedMultiplier: DEFAULT_RUNNING_SPEED,
@@ -133,6 +182,12 @@ export class Game implements Updatable, Renderable {
       mutationAmount: this.controlState.selectedMutationRate,
       seedGenome: this.savedBrainRecord?.genome ?? null,
     });
+    this.heuristicCar = new Car(this.populationSpawnX, this.populationSpawnY, 42, 74, undefined, {
+      controlMode: 'heuristic',
+    });
+    this.manualCar = new Car(this.populationSpawnX, this.populationSpawnY, 42, 74, undefined, {
+      controlMode: 'manual',
+    });
     this.trafficManager = new TrafficManager(this.road);
     this.controlsPanel = new ControlsPanel(this.container, {
       onTogglePause: () => {
@@ -149,6 +204,9 @@ export class Game implements Updatable, Renderable {
       },
       onMutationRateChange: (rate: MutationRateOption) => {
         this.setMutationRate(rate);
+      },
+      onDriverModeChange: (mode: DriverMode) => {
+        this.setSelectedDriverMode(mode);
       },
       onTrafficEnabledChange: (enabled: boolean) => {
         this.setTrafficEnabled(enabled);
@@ -194,6 +252,8 @@ export class Game implements Updatable, Renderable {
   public destroy(): void {
     this.loop.stop();
     this.controlsPanel.destroy();
+    this.manualCar.destroy();
+    this.heuristicCar.destroy();
     this.populationManager.destroy();
     this.trafficManager.destroy();
     window.removeEventListener('resize', this.resizeObserver);
@@ -219,11 +279,13 @@ export class Game implements Updatable, Renderable {
 
   public render(): void {
     const ctx = this.context;
-    const bestCar = this.populationManager.getBestCar();
+    const selectedCar = this.getSelectedCar();
     const populationStats = this.populationManager.getStats();
-    const steeringDebug = bestCar.getSteeringDebugSnapshot();
-    const laneAwareness = bestCar.getLaneAwarenessSnapshot();
-    const sensorAwareness = bestCar.getSensorAwarenessSnapshot();
+    const steeringDebug = selectedCar.getSteeringDebugSnapshot();
+    const laneAwareness = selectedCar.getLaneAwarenessSnapshot();
+    const sensorAwareness = selectedCar.getSensorAwarenessSnapshot();
+    const bestAiFitness = this.populationManager.getBestCarFitnessSnapshot();
+    const heuristicBenchmark = this.getHeuristicBenchmarkSnapshot();
 
     ctx.clearRect(0, 0, this.width, this.height);
     this.renderBackground(ctx);
@@ -232,10 +294,11 @@ export class Game implements Updatable, Renderable {
       width: this.width,
       height: this.height,
       framesPerSecond: this.framesPerSecond,
-      controlMode: bestCar.getControlMode(),
-      speed: bestCar.speed,
-      damaged: bestCar.damaged,
-      traveledDistance: populationStats.bestProgress,
+      controlMode: selectedCar.getControlMode(),
+      selectedDriverMode: this.selectedDriverMode,
+      speed: selectedCar.speed,
+      damaged: selectedCar.damaged,
+      traveledDistance: this.getSelectedDriverProgress(),
       trafficCount: this.trafficManager.getActiveCount(),
       laneSpeedLabel: this.trafficManager.getLaneSpeedDebugLabel(),
       activeTrafficSettings: this.activeTrafficSettings,
@@ -243,9 +306,23 @@ export class Game implements Updatable, Renderable {
       steeringDebug,
       laneAwareness,
       sensorAwareness,
-      sensorReadings: bestCar.getSensorReadings(),
-      brainSnapshot: bestCar.getBrainSnapshot(),
-      fitness: this.populationManager.getBestCarFitnessSnapshot(),
+      heuristicDebug: selectedCar.getHeuristicDebugSnapshot(),
+      sensorReadings: selectedCar.getSensorReadings(),
+      brainSnapshot: selectedCar.getBrainSnapshot(),
+      fitness:
+        this.selectedDriverMode === 'ai'
+          ? bestAiFitness
+          : createSyntheticFitnessSnapshot(this.getSelectedDriverProgress(), selectedCar.damaged),
+      bestAiFitness: bestAiFitness.totalFitness,
+      heuristicFitness: heuristicBenchmark.fitness,
+      aiHeuristicRatio:
+        heuristicBenchmark.fitness <= 0
+          ? 0
+          : bestAiFitness.totalFitness / heuristicBenchmark.fitness,
+      bestAiProgress: populationStats.bestProgress,
+      heuristicProgress: heuristicBenchmark.progress,
+      bestAiSurvivalTime: this.getBestAiSurvivalTime(),
+      heuristicSurvivalTime: heuristicBenchmark.survivalTime,
       populationSize: populationStats.populationSize,
       aliveCount: populationStats.aliveCount,
       crashedCount: populationStats.crashedCount,
@@ -269,6 +346,7 @@ export class Game implements Updatable, Renderable {
     });
     this.controlsPanel.render({
       ...this.getControlSnapshot(),
+      selectedDriverMode: this.selectedDriverMode,
       generation: populationStats.generation,
       activePopulationSize: populationStats.populationSize,
       activeMutationRate: populationStats.mutationAmount,
@@ -320,6 +398,7 @@ export class Game implements Updatable, Renderable {
     this.trafficManager.render(ctx);
     this.trafficManager.renderDebug(ctx, visibleTop, visibleBottom);
     this.populationManager.render(ctx);
+    this.renderComparisonCars(ctx);
     ctx.restore();
   }
 
@@ -361,6 +440,12 @@ export class Game implements Updatable, Renderable {
       this.controlState.lastActionMessage = this.showControlsPanel
         ? 'Controls panel shown.'
         : 'Controls panel hidden.';
+      return;
+    }
+
+    if (key === CYCLE_DRIVER_MODE_KEY) {
+      event.preventDefault();
+      this.cycleDriverMode();
       return;
     }
 
@@ -571,9 +656,25 @@ export class Game implements Updatable, Renderable {
     this.activeTrafficSettings = {
       ...this.selectedTrafficSettings,
     };
-    this.trafficManager.reset(this.populationManager.getBestCar());
+    this.manualCar.reset(this.populationSpawnX, this.populationSpawnY);
+    this.heuristicCar.reset(this.populationSpawnX, this.populationSpawnY);
+    this.heuristicBenchmark = createDriverBenchmarkState();
+    this.imitationRecorder.clear();
+    this.trafficManager.reset(this.getLeaderCar());
     this.populationManager.updateSensors(
       this.trafficManager.getTrafficPolygons(),
+      this.trafficManager.getTrafficCars()
+    );
+    this.manualCar.updateSensors(
+      this.road.sensorSegments,
+      this.trafficManager.getTrafficPolygons(),
+      this.road,
+      this.trafficManager.getTrafficCars()
+    );
+    this.heuristicCar.updateSensors(
+      this.road.sensorSegments,
+      this.trafficManager.getTrafficPolygons(),
+      this.road,
       this.trafficManager.getTrafficCars()
     );
     this.populationManager.updateTrainingSignals(0, this.road.borderSegments);
@@ -583,18 +684,31 @@ export class Game implements Updatable, Renderable {
 
   private advanceSimulation(deltaTimeSeconds: number): void {
     this.populationManager.update(deltaTimeSeconds, this.road.borderSegments);
+    this.updateComparisonCars(deltaTimeSeconds);
     this.populationManager.refreshStats();
 
-    const referenceCar = this.populationManager.getBestCar();
+    const referenceCar = this.getLeaderCar();
 
     this.trafficManager.update(
       deltaTimeSeconds,
       referenceCar,
       this.road.borderSegments,
-      this.populationManager.getCars()
+      this.getCollisionSubjects()
     );
     this.populationManager.updateSensors(
       this.trafficManager.getTrafficPolygons(),
+      this.trafficManager.getTrafficCars()
+    );
+    this.manualCar.updateSensors(
+      this.road.sensorSegments,
+      this.trafficManager.getTrafficPolygons(),
+      this.road,
+      this.trafficManager.getTrafficCars()
+    );
+    this.heuristicCar.updateSensors(
+      this.road.sensorSegments,
+      this.trafficManager.getTrafficPolygons(),
+      this.road,
       this.trafficManager.getTrafficCars()
     );
     this.populationManager.updateTrainingSignals(
@@ -602,11 +716,13 @@ export class Game implements Updatable, Renderable {
       this.road.borderSegments
     );
     this.populationManager.refreshStats();
+    this.updateHeuristicBenchmark(deltaTimeSeconds);
+    this.recordImitationSample();
 
-    const bestCar = this.populationManager.getBestCar();
+    const followCar = this.getSelectedCar();
 
-    this.followTargetX = bestCar.x;
-    this.followTargetY = bestCar.y;
+    this.followTargetX = followCar.x;
+    this.followTargetY = followCar.y;
     this.camera.follow(this.followTargetX, this.followTargetY, deltaTimeSeconds);
   }
 
@@ -651,6 +767,11 @@ export class Game implements Updatable, Renderable {
     this.controlState.selectedMutationRate = nextMutationRate;
     this.controlState.lastActionMessage =
       `Mutation rate armed: ${nextMutationRate.toFixed(2)}. Restart to apply.`;
+  }
+
+  private setSelectedDriverMode(mode: DriverMode): void {
+    this.selectedDriverMode = mode;
+    this.controlState.lastActionMessage = `Driver mode set to ${formatDriverModeLabel(mode)}.`;
   }
 
   private setTrafficEnabled(enabled: boolean): void {
@@ -740,6 +861,13 @@ export class Game implements Updatable, Renderable {
     this.setMutationRate(MUTATION_RATE_OPTIONS[nextIndex]);
   }
 
+  private cycleDriverMode(): void {
+    const currentIndex = DRIVER_MODE_OPTIONS.indexOf(this.selectedDriverMode);
+    const nextIndex = clampOptionIndex(currentIndex + 1, DRIVER_MODE_OPTIONS.length);
+
+    this.setSelectedDriverMode(DRIVER_MODE_OPTIONS[nextIndex]);
+  }
+
   private getSimulationSpeedMultiplier(): SimulationSpeedOption {
     return this.controlState.paused ? 0 : this.controlState.runningSpeedMultiplier;
   }
@@ -756,6 +884,216 @@ export class Game implements Updatable, Renderable {
 
   private buildRestartActionMessage(): string {
     return `Restarted GEN ${this.populationManager.getStats().generation} @ ${this.getSimulationSpeedMultiplier()}x.`;
+  }
+
+  private getSelectedCar(): Car {
+    if (this.selectedDriverMode === 'manual') {
+      return this.manualCar;
+    }
+
+    if (this.selectedDriverMode === 'heuristic') {
+      return this.heuristicCar;
+    }
+
+    return this.populationManager.getBestCar();
+  }
+
+  private getSelectedDriverProgress(): number {
+    if (this.selectedDriverMode === 'heuristic') {
+      return this.heuristicBenchmark.progress;
+    }
+
+    if (this.selectedDriverMode === 'manual') {
+      return Math.max(0, this.populationSpawnY - this.manualCar.y);
+    }
+
+    return this.populationManager.getStats().bestProgress;
+  }
+
+  private getLeaderCar(): Car {
+    const candidates = [this.populationManager.getBestCar(), this.heuristicCar];
+
+    if (this.selectedDriverMode === 'manual') {
+      candidates.push(this.manualCar);
+    }
+
+    let leader = candidates.find((candidate) => !candidate.damaged) ?? candidates[0];
+
+    for (const candidate of candidates) {
+      if (!candidate.damaged && candidate.y < leader.y) {
+        leader = candidate;
+      }
+    }
+
+    return leader;
+  }
+
+  private getCollisionSubjects(): readonly Car[] {
+    return this.selectedDriverMode === 'manual'
+      ? [...this.populationManager.getCars(), this.heuristicCar, this.manualCar]
+      : [...this.populationManager.getCars(), this.heuristicCar];
+  }
+
+  private updateComparisonCars(deltaTimeSeconds: number): void {
+    if (this.selectedDriverMode === 'manual') {
+      this.manualCar.update(deltaTimeSeconds, this.road.borderSegments);
+    }
+
+    this.heuristicCar.update(deltaTimeSeconds, this.road.borderSegments);
+  }
+
+  private renderComparisonCars(ctx: CanvasRenderingContext2D): void {
+    const selectedCar = this.getSelectedCar();
+
+    if (this.selectedDriverMode === 'manual') {
+      this.manualCar.render(ctx, {
+        renderSensors: selectedCar === this.manualCar,
+        renderDebug: true,
+      });
+      this.renderDriverLabel(ctx, this.manualCar, 'MANUAL');
+    }
+
+    this.heuristicCar.render(ctx, {
+      renderSensors: selectedCar === this.heuristicCar,
+      renderDebug: true,
+    });
+    this.renderDriverLabel(ctx, this.heuristicCar, 'HEUR');
+  }
+
+  private renderDriverLabel(
+    ctx: CanvasRenderingContext2D,
+    car: Car,
+    label: string
+  ): void {
+    if (car.damaged) {
+      return;
+    }
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(236, 255, 247, 0.9)';
+    ctx.font = '11px "SF Mono", Monaco, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(label, car.x, car.y - DRIVER_RENDER_LABEL_OFFSET);
+    ctx.restore();
+  }
+
+  private updateHeuristicBenchmark(deltaTimeSeconds: number): void {
+    const car = this.heuristicCar;
+    const laneOffset = Math.abs(this.road.getNearestLaneCenterOffset(car.x));
+    const sensorAwareness = car.getSensorAwarenessSnapshot();
+
+    this.heuristicBenchmark.progress = Math.max(
+      this.heuristicBenchmark.progress,
+      this.populationSpawnY - car.y
+    );
+    this.heuristicBenchmark.survivalTime += deltaTimeSeconds;
+    this.heuristicBenchmark.laneOffsetIntegral += laneOffset * deltaTimeSeconds;
+    this.heuristicBenchmark.steeringEffortIntegral +=
+      Math.abs(car.getSteeringDebugSnapshot().smoothedSteer) * deltaTimeSeconds;
+    this.heuristicBenchmark.edgeExposure +=
+      sensorAwareness.edgeProximity * deltaTimeSeconds;
+
+    if (Math.abs(car.speed) < LOW_SPEED_THRESHOLD) {
+      this.heuristicBenchmark.lowSpeedTime += deltaTimeSeconds;
+    }
+
+    if (
+      !car.damaged &&
+      Math.abs(this.heuristicBenchmark.previousLaneOffset) > laneOffset
+    ) {
+      this.heuristicBenchmark.laneRecoveryReward +=
+        Math.abs(this.heuristicBenchmark.previousLaneOffset) - laneOffset;
+    }
+
+    if (sensorAwareness.frontObstacleSignal > FRONT_OBSTACLE_SIGNAL_THRESHOLD) {
+      this.heuristicBenchmark.frontObstaclePenalty +=
+        sensorAwareness.frontObstacleSignal * deltaTimeSeconds;
+    }
+
+    if (
+      !car.damaged &&
+      this.heuristicBenchmark.previousFrontObstacleSignal >
+        FRONT_OBSTACLE_SIGNAL_THRESHOLD &&
+      sensorAwareness.frontObstacleSignal <
+        this.heuristicBenchmark.previousFrontObstacleSignal -
+          FRONT_OBSTACLE_CLEAR_REWARD_DELTA &&
+      car.getForwardSpeedRatio() > 0.22
+    ) {
+      this.heuristicBenchmark.obstacleAvoidanceReward +=
+        this.heuristicBenchmark.previousFrontObstacleSignal -
+        sensorAwareness.frontObstacleSignal;
+    }
+
+    this.heuristicBenchmark.previousLaneOffset = laneOffset;
+    this.heuristicBenchmark.previousFrontObstacleSignal =
+      sensorAwareness.frontObstacleSignal;
+  }
+
+  private getHeuristicBenchmarkSnapshot(): DriverBenchmarkSnapshot {
+    return {
+      progress: this.heuristicBenchmark.progress,
+      survivalTime: this.heuristicBenchmark.survivalTime,
+      fitness: this.calculateBenchmarkFitness(this.heuristicBenchmark, this.heuristicCar),
+      alive: !this.heuristicCar.damaged,
+    };
+  }
+
+  private getBestAiSurvivalTime(): number {
+    return Math.max(0, (this.populationSpawnY - this.populationManager.getBestCar().y) / 80);
+  }
+
+  private calculateBenchmarkFitness(
+    benchmark: DriverBenchmarkState,
+    car: Car
+  ): number {
+    let totalFitness =
+      benchmark.progress * FITNESS_PROGRESS_WEIGHT +
+      benchmark.survivalTime * FITNESS_SURVIVAL_BONUS +
+      benchmark.obstacleAvoidanceReward * FITNESS_SAFE_AVOIDANCE_REWARD +
+      benchmark.laneRecoveryReward * FITNESS_LANE_RECOVERY_REWARD;
+
+    totalFitness -= benchmark.edgeExposure * FITNESS_EDGE_PROXIMITY_PENALTY;
+    totalFitness -= benchmark.steeringEffortIntegral * FITNESS_STEERING_PENALTY;
+    totalFitness -= benchmark.lowSpeedTime * FITNESS_STAGNATION_PENALTY;
+    totalFitness -= benchmark.frontObstaclePenalty * FITNESS_FRONT_OBSTACLE_PENALTY;
+    totalFitness -= benchmark.laneOffsetIntegral * FITNESS_LANE_OFFSET_PENALTY;
+
+    if (car.damaged && benchmark.survivalTime < FITNESS_EARLY_CRASH_WINDOW_SECONDS) {
+      totalFitness -= FITNESS_EARLY_CRASH_PENALTY;
+    }
+
+    return totalFitness;
+  }
+
+  private recordImitationSample(): void {
+    let sourceCar: Car | null = null;
+    let driverMode: Extract<DriverMode, 'manual' | 'heuristic'> | null = null;
+
+    if (this.selectedDriverMode === 'manual') {
+      sourceCar = this.manualCar;
+      driverMode = 'manual';
+    } else if (this.selectedDriverMode === 'heuristic') {
+      sourceCar = this.heuristicCar;
+      driverMode = 'heuristic';
+    }
+
+    if (sourceCar === null || driverMode === null || sourceCar.damaged) {
+      return;
+    }
+
+    const controlState = sourceCar.getControlState();
+
+    this.imitationRecorder.record({
+      inputs: [...sourceCar.getSensorReadings()],
+      outputs: {
+        forward: Number(controlState.forward),
+        brake: Number(controlState.reverse),
+        steer: controlState.steerIntent ?? 0,
+      },
+      timestamp: performance.now(),
+      driverMode,
+    });
   }
 
   private renderWorldBackdrop(
@@ -825,6 +1163,43 @@ export class Game implements Updatable, Renderable {
 
     return this.populationManager.isGenomeCompatible(this.savedBrainRecord.genome);
   }
+}
+
+function createDriverBenchmarkState(): DriverBenchmarkState {
+  return {
+    progress: 0,
+    survivalTime: 0,
+    laneOffsetIntegral: 0,
+    steeringEffortIntegral: 0,
+    lowSpeedTime: 0,
+    edgeExposure: 0,
+    laneRecoveryReward: 0,
+    frontObstaclePenalty: 0,
+    obstacleAvoidanceReward: 0,
+    previousLaneOffset: 0,
+    previousFrontObstacleSignal: 0,
+  };
+}
+
+function createSyntheticFitnessSnapshot(progress: number, damaged: boolean) {
+  return {
+    totalFitness: progress,
+    progressReward: progress,
+    survivalReward: 0,
+    forwardSpeedReward: 0,
+    laneAlignmentReward: 0,
+    obstaclePenalty: 0,
+    obstacleAvoidanceReward: 0,
+    edgePenalty: 0,
+    steeringPenalty: 0,
+    steeringOscillationPenalty: 0,
+    laneOffsetPenalty: 0,
+    laneRecoveryReward: 0,
+    sustainedSteerPenalty: 0,
+    lateralOffsetPenalty: 0,
+    stagnationPenalty: 0,
+    earlyCrashPenalty: damaged ? FITNESS_EARLY_CRASH_PENALTY : 0,
+  };
 }
 
 function clampOptionIndex(index: number, length: number): number {

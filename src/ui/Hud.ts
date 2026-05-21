@@ -5,6 +5,8 @@ import type {
   SensorAwarenessSnapshot,
   SteeringDebugSnapshot,
 } from '../car/Car';
+import { formatDriverModeLabel, type DriverMode } from '../drivers/DriverMode';
+import type { HeuristicDriverDebugSnapshot } from '../drivers/HeuristicDriver';
 import {
   formatSimulationSpeedLabel,
   type MutationRateOption,
@@ -30,6 +32,7 @@ export interface HudRenderData {
   height: number;
   framesPerSecond: number;
   controlMode: CarControlMode;
+  selectedDriverMode: DriverMode;
   speed: number;
   damaged: boolean;
   traveledDistance: number;
@@ -40,9 +43,17 @@ export interface HudRenderData {
   steeringDebug: SteeringDebugSnapshot;
   laneAwareness: LaneAwarenessSnapshot;
   sensorAwareness: SensorAwarenessSnapshot;
+  heuristicDebug: HeuristicDriverDebugSnapshot;
   sensorReadings: readonly number[];
   brainSnapshot: BrainSnapshot | null;
   fitness: FitnessDiagnosticSnapshot;
+  bestAiFitness: number;
+  heuristicFitness: number;
+  aiHeuristicRatio: number;
+  bestAiProgress: number;
+  heuristicProgress: number;
+  bestAiSurvivalTime: number;
+  heuristicSurvivalTime: number;
   populationSize: number;
   aliveCount: number;
   crashedCount: number;
@@ -154,7 +165,16 @@ export class Hud {
         row('STATE', data.damaged ? 'DMGD' : 'LIVE', data.damaged ? THEME.hud.alertColor : THEME.hud.okColor),
         row('SPD', formatSignedValue(data.speed, 1)),
         row('PROG', formatValue(data.traveledDistance, 0)),
-        row('FIT', formatValue(data.fitness.totalFitness, 0), THEME.hud.aiColor),
+        row(
+          'FIT',
+          formatValue(
+            data.selectedDriverMode === 'heuristic'
+              ? data.heuristicFitness
+              : data.fitness.totalFitness,
+            0
+          ),
+          data.controlMode === 'ai' ? THEME.hud.aiColor : THEME.hud.valueColor
+        ),
       ]
     );
 
@@ -168,7 +188,12 @@ export class Hud {
         row('RAW', formatSignedValue(data.steeringDebug.rawSteerIntent, 2)),
         row('SMTH', formatSignedValue(data.steeringDebug.smoothedSteer, 2), THEME.hud.aiColor),
         row('DIR', String(data.steeringDebug.steeringDirection)),
-        row('HOLD', formatValue(data.steeringDebug.sustainedSteerTime, 2)),
+        row(
+          data.controlMode === 'heuristic' ? 'WHY' : 'HOLD',
+          data.controlMode === 'heuristic'
+            ? data.heuristicDebug.reason
+            : formatValue(data.steeringDebug.sustainedSteerTime, 2)
+        ),
       ]
     );
 
@@ -182,7 +207,12 @@ export class Hud {
         row('OFF', formatSignedValue(data.laneAwareness.laneCenterOffsetNormalized, 2)),
         row('HEAD', formatSignedValue(data.laneAwareness.headingErrorNormalized, 2)),
         row('DLTA', formatSignedValue(data.laneAwareness.laneOffsetDelta, 2)),
-        row('RCVR', formatSignedValue(data.steeringDebug.recoveryTrend, 2)),
+        row(
+          data.controlMode === 'heuristic' ? 'TLANE' : 'RCVR',
+          data.controlMode === 'heuristic'
+            ? formatTargetLaneLabel(data.heuristicDebug.targetLane)
+            : formatSignedValue(data.steeringDebug.recoveryTrend, 2)
+        ),
       ]
     );
 
@@ -211,7 +241,7 @@ export class Hud {
         row('BEST', `${data.bestCarIndex + 1}/${data.generation}`),
         row('ALIVE', `${data.aliveCount}/${data.populationSize}`),
         row('SIM', data.paused ? 'PAUSE' : formatSimulationSpeedLabel(data.simulationSpeed)),
-        row('CRASH', String(data.crashedCount)),
+        row('A/H', formatRatioLabel(data.aiHeuristicRatio), THEME.hud.aiColor),
       ]
     );
 
@@ -223,10 +253,10 @@ export class Hud {
         contentWidth,
         'ADVANCED',
         [
-          row('P/S', `${formatValue(data.fitness.progressReward, 0)}/${formatValue(data.fitness.survivalReward, 0)}`),
-          row('REC', formatValue(data.fitness.laneRecoveryReward, 1)),
-          row('EDGE', formatValue(data.fitness.edgePenalty, 1)),
-          row('STR', `${formatValue(data.fitness.steeringPenalty, 1)}/${formatValue(data.fitness.stagnationPenalty, 1)}`),
+          row('AI FIT', formatValue(data.bestAiFitness, 0), THEME.hud.aiColor),
+          row('HEUR', formatValue(data.heuristicFitness, 0)),
+          row('A/H P', `${formatValue(data.bestAiProgress, 0)}/${formatValue(data.heuristicProgress, 0)}`),
+          row('A/H T', `${formatValue(data.bestAiSurvivalTime, 1)}/${formatValue(data.heuristicSurvivalTime, 1)}`),
         ]
       );
     }
@@ -245,7 +275,7 @@ export class Hud {
     ctx.fillStyle = THEME.hud.textColor;
     ctx.font = `9px ${FONT_MONO}`;
     ctx.textBaseline = 'top';
-    ctx.fillText('SELECTED CAR', x, y);
+    ctx.fillText(`DRIVER: ${formatDriverModeLabel(data.selectedDriverMode).toUpperCase()}`, x, y);
 
     this.renderKeyValueRow(ctx, x, x + width * 0.45, y + 18, 'FPS', formatValue(data.framesPerSecond, 1));
     this.renderKeyValueRow(
@@ -254,7 +284,7 @@ export class Hud {
       x + width,
       y + 18,
       'MODE',
-      data.controlMode.toUpperCase(),
+      formatDriverModeLabel(data.selectedDriverMode).toUpperCase(),
       data.controlMode === 'ai' ? THEME.hud.aiColor : THEME.hud.valueColor
     );
     this.renderKeyValueRow(
@@ -346,7 +376,7 @@ export class Hud {
     ctx.fillText(`MSG ${truncateStatusMessage(data.lastControlAction, 38)}`, x + 10, y + 31);
 
     if (!data.showHelp) {
-      ctx.fillText('H help  D adv  V viz  C ctrl', x + 10, y + 43);
+      ctx.fillText('H help  M driver  D adv  V viz  C ctrl', x + 10, y + 43);
       return;
     }
 
@@ -361,7 +391,7 @@ export class Hud {
       y + 55
     );
     ctx.fillText(
-      `MUT ${formatValue(data.mutationAmount, 2)} / ${formatValue(data.selectedMutationRate, 2)}  LANE ${truncateStatusMessage(data.laneSpeedLabel, 18)}`,
+      `A/H ${formatRatioLabel(data.aiHeuristicRatio)}  REC ${formatValue(data.mutationAmount, 2)}  LANE ${truncateStatusMessage(data.laneSpeedLabel, 14)}`,
       x + 10,
       y + 67
     );
@@ -443,6 +473,18 @@ function formatSavedBrainStatus(
   const distanceLabel = bestDistance === null ? '--' : bestDistance.toFixed(0);
 
   return `${compatible ? 'READY' : 'INCOMP'} ${distanceLabel}`;
+}
+
+function formatTargetLaneLabel(targetLane: number | null): string {
+  return targetLane === null ? '--' : `L${targetLane + 1}`;
+}
+
+function formatRatioLabel(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) {
+    return '--';
+  }
+
+  return `${(value * 100).toFixed(0)}%`;
 }
 
 function truncateStatusMessage(value: string, maxLength: number): string {
