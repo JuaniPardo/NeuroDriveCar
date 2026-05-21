@@ -104,7 +104,7 @@ export class Game implements Updatable, Renderable {
   };
   private showHudHelp = false;
   private showNeuralVisualizer = true;
-  private showControlsPanel = false;
+  private showControlsPanel = true;
   private showAdvancedDiagnostics = false;
 
   public constructor(container: HTMLElement) {
