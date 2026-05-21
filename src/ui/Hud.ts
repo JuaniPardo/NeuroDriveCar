@@ -12,11 +12,14 @@ const PANEL_OK_COLOR = '#cde7d5';
 const PANEL_AI_COLOR = '#8fe1ff';
 const PANEL_TITLE = 'NEURODRIVECAR / MVP 09';
 const SENSOR_STRIP_HEIGHT = 16;
-const STATUS_LINE_HEIGHT = 25;
+const STATUS_LINE_HEIGHT = 22;
 const STATUS_TOP_PADDING = 14;
-const STATUS_SECTION_GAP = 8;
+const STATUS_SECTION_GAP = 10;
 const INSTRUCTIONS_TITLE_COLOR = '#cde7d5';
 const INSTRUCTIONS_TEXT_COLOR = '#9db7aa';
+const VALUE_TEXT_COLOR = '#f1f7f4';
+const SECTION_LABEL_COLOR = '#7f9b90';
+const SECTION_DIVIDER_COLOR = 'rgba(127, 224, 196, 0.1)';
 
 export interface HudRenderData {
   width: number;
@@ -98,22 +101,8 @@ export class Hud {
     const statusColor = data.damaged ? PANEL_ALERT_COLOR : PANEL_OK_COLOR;
     const controlModeColor = data.controlMode === 'ai' ? PANEL_AI_COLOR : PANEL_TEXT_COLOR;
     const textX = x + 12;
-    const line1Y = y + STATUS_TOP_PADDING;
-    const compactLineHeight = STATUS_LINE_HEIGHT;
-    const line2Y = line1Y + compactLineHeight;
-    const line3Y = line2Y + compactLineHeight + STATUS_SECTION_GAP;
-    const line4Y = line3Y + compactLineHeight;
-    const line5Y = line4Y + compactLineHeight;
-    const line6Y = line5Y + compactLineHeight;
-    const line7Y = line6Y + compactLineHeight;
-    const line8Y = line7Y + compactLineHeight + STATUS_SECTION_GAP;
-    const line9Y = line8Y + compactLineHeight;
-    const line10Y = line9Y + compactLineHeight;
-    const line11Y = line10Y + compactLineHeight;
-    const line12Y = line11Y + compactLineHeight;
-    const line13Y = line12Y + compactLineHeight;
-    const sensorLabelY = line13Y + compactLineHeight + 8;
-    const sensorStripY = sensorLabelY + 30;
+    const valueX = x + width - 12;
+    let cursorY = y + STATUS_TOP_PADDING;
 
     ctx.save();
     ctx.fillStyle = PANEL_BACKGROUND_COLOR;
@@ -125,40 +114,134 @@ export class Hud {
     ctx.font = '10px "SF Mono", Monaco, monospace';
     ctx.textBaseline = 'top';
     ctx.fillStyle = PANEL_TEXT_COLOR;
-    ctx.fillText(PANEL_TITLE, textX, line1Y);
-    ctx.fillText(`FPS ${data.framesPerSecond.toFixed(1)}`, textX, line2Y);
+    ctx.fillText(PANEL_TITLE, textX, cursorY);
+    cursorY += STATUS_LINE_HEIGHT + 4;
 
-    ctx.fillStyle = statusColor;
-    ctx.fillText(`STATE ${statusLabel}`, textX, line3Y);
+    this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'FPS', data.framesPerSecond.toFixed(1));
+    cursorY += STATUS_LINE_HEIGHT;
+    this.renderDivider(ctx, x + 12, x + width - 12, cursorY);
+    cursorY += STATUS_SECTION_GAP;
 
-    ctx.fillStyle = controlModeColor;
-    ctx.fillText(`MODE ${data.controlMode.toUpperCase()}`, textX, line4Y);
-
-    ctx.fillStyle = PANEL_TEXT_COLOR;
-    ctx.fillText(
-      `SPEED ${Math.abs(data.speed).toFixed(1)} ${getVelocityDirectionLabel(data.speed)}`,
+    this.renderSectionLabel(ctx, textX, cursorY, 'VEHICLE');
+    cursorY += STATUS_LINE_HEIGHT - 2;
+    this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'STATE', statusLabel, statusColor);
+    cursorY += STATUS_LINE_HEIGHT;
+    this.renderKeyValueRow(
+      ctx,
       textX,
-      line5Y
+      valueX,
+      cursorY,
+      'MODE',
+      data.controlMode.toUpperCase(),
+      controlModeColor
     );
-    ctx.fillText(`PROG ${data.traveledDistance.toFixed(1)}`, textX, line6Y);
-    ctx.fillText(`BEST ${data.bestCarIndex + 1} / GEN ${data.generation}`, textX, line7Y);
-    ctx.fillText(`POP ${data.populationSize}`, textX, line8Y);
-    ctx.fillText(`ALIVE ${data.aliveCount}`, textX, line9Y);
-    ctx.fillText(`CRASH ${data.crashedCount}`, textX, line10Y);
-    ctx.fillText(`B MAX ${data.bestProgress.toFixed(1)}`, textX, line11Y);
-    ctx.fillText(`TRAFFIC ${data.trafficCount}`, textX, line12Y);
-    ctx.fillText(`T SPEED ${data.trafficTargetSpeed.toFixed(1)}`, textX, line13Y);
+    cursorY += STATUS_LINE_HEIGHT;
+    this.renderKeyValueRow(
+      ctx,
+      textX,
+      valueX,
+      cursorY,
+      'SPEED',
+      `${Math.abs(data.speed).toFixed(1)} ${getVelocityDirectionLabel(data.speed)}`
+    );
+    cursorY += STATUS_LINE_HEIGHT;
+    this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'PROG', data.traveledDistance.toFixed(1));
+    cursorY += STATUS_LINE_HEIGHT;
+    this.renderKeyValueRow(
+      ctx,
+      textX,
+      valueX,
+      cursorY,
+      'CTRL',
+      formatControlState(data.controlState)
+    );
+    cursorY += STATUS_LINE_HEIGHT;
+    this.renderDivider(ctx, x + 12, x + width - 12, cursorY);
+    cursorY += STATUS_SECTION_GAP;
 
-    ctx.fillStyle = PANEL_MUTED_TEXT_COLOR;
-    ctx.font = '9px "SF Mono", Monaco, monospace';
-    ctx.fillText(`L SPD ${data.laneSpeedLabel}`, textX, sensorLabelY - 44);
-    ctx.fillText(`S HIT ${data.sensorHitCount}`, textX, sensorLabelY - 22);
-    ctx.fillText(`CTRL ${formatControlState(data.controlState)}`, textX, sensorLabelY);
-    ctx.fillText('SENSORS', textX, sensorLabelY + 4);
+    this.renderSectionLabel(ctx, textX, cursorY, 'POPULATION');
+    cursorY += STATUS_LINE_HEIGHT - 2;
+    this.renderKeyValueRow(
+      ctx,
+      textX,
+      valueX,
+      cursorY,
+      'BEST',
+      `${data.bestCarIndex + 1} / GEN ${data.generation}`
+    );
+    cursorY += STATUS_LINE_HEIGHT;
+    this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'POP', String(data.populationSize));
+    cursorY += STATUS_LINE_HEIGHT;
+    this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'ALIVE', String(data.aliveCount));
+    cursorY += STATUS_LINE_HEIGHT;
+    this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'CRASH', String(data.crashedCount));
+    cursorY += STATUS_LINE_HEIGHT;
+    this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'B MAX', data.bestProgress.toFixed(1));
+    cursorY += STATUS_LINE_HEIGHT;
+    this.renderDivider(ctx, x + 12, x + width - 12, cursorY);
+    cursorY += STATUS_SECTION_GAP;
 
-    this.renderSensorStrip(ctx, x + 12, sensorStripY, width - 24, data.sensorReadings);
+    this.renderSectionLabel(ctx, textX, cursorY, 'TRAFFIC');
+    cursorY += STATUS_LINE_HEIGHT - 2;
+    this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'COUNT', String(data.trafficCount));
+    cursorY += STATUS_LINE_HEIGHT;
+    this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'TARGET', data.trafficTargetSpeed.toFixed(1));
+    cursorY += STATUS_LINE_HEIGHT;
+    this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'LANES', data.laneSpeedLabel);
+    cursorY += STATUS_LINE_HEIGHT;
+    this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'S HIT', String(data.sensorHitCount));
+    cursorY += STATUS_LINE_HEIGHT + 2;
+    this.renderSectionLabel(ctx, textX, cursorY, 'SENSORS');
+    cursorY += 18;
+
+    this.renderSensorStrip(ctx, x + 12, cursorY, width - 24, data.sensorReadings);
 
     ctx.restore();
+  }
+
+  private renderKeyValueRow(
+    ctx: CanvasRenderingContext2D,
+    labelX: number,
+    valueX: number,
+    y: number,
+    label: string,
+    value: string,
+    valueColor = VALUE_TEXT_COLOR
+  ): void {
+    ctx.font = '9px "SF Mono", Monaco, monospace';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = PANEL_MUTED_TEXT_COLOR;
+    ctx.fillText(label, labelX, y);
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = valueColor;
+    ctx.fillText(value, valueX, y);
+    ctx.textAlign = 'left';
+  }
+
+  private renderSectionLabel(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    label: string
+  ): void {
+    ctx.font = '8px "SF Mono", Monaco, monospace';
+    ctx.fillStyle = SECTION_LABEL_COLOR;
+    ctx.fillText(label, x, y);
+  }
+
+  private renderDivider(
+    ctx: CanvasRenderingContext2D,
+    startX: number,
+    endX: number,
+    y: number
+  ): void {
+    ctx.strokeStyle = SECTION_DIVIDER_COLOR;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(startX, y + 0.5);
+    ctx.lineTo(endX, y + 0.5);
+    ctx.stroke();
   }
 
   private renderInstructionsPanel(
