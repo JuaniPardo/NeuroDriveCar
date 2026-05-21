@@ -393,6 +393,13 @@ export class Car {
     this.setDamaged(collisionPoint);
   }
 
+  public retire(): void {
+    this.damaged = true;
+    this.speed = 0;
+    this.steeringAngle = 0;
+    this.collisionPoint = null;
+  }
+
   private renderDebugVectors(ctx: CanvasRenderingContext2D): void {
     const velocityLength = this.speed * DEBUG_VECTOR_SPEED_SCALE;
     const speedDirection = this.speed >= 0 ? 1 : -1;

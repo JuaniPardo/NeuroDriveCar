@@ -1,3 +1,5 @@
+import type { BrainGenome } from '../ai/Brain';
+import { applyMutatedGenome, cloneBrainGenome } from '../ai/mutation';
 import { Car } from '../car/Car';
 import { DEFAULT_CAR_PHYSICS } from '../car/Physics';
 import type { Point, Segment } from '../collision/geometry';
@@ -14,6 +16,11 @@ const BEST_CAR_LABEL_OFFSET = 54;
 const NON_BEST_RING_COLOR = 'rgba(109, 200, 255, 0.38)';
 const AGENT_MARKER_COLOR = 'rgba(143, 225, 255, 0.82)';
 const AGENT_MARKER_RADIUS = 3.5;
+const BEST_BRAIN_STORAGE_KEY = 'neuroDriveCar.bestBrain';
+const BEST_PROGRESS_STORAGE_KEY = 'neuroDriveCar.bestProgress';
+const DEFAULT_MUTATION_AMOUNT = 0.18;
+const STALL_PROGRESS_EPSILON = 0.25;
+const STALL_TIMEOUT_SECONDS = 2.5;
 
 export interface PopulationManagerOptions {
   spawnX: number;
@@ -37,19 +44,26 @@ export class PopulationManager {
   private readonly populationSize: number;
   private readonly cars: Car[] = [];
   private readonly progressByCar: number[] = [];
+  private readonly stallTimeByCar: number[] = [];
   private readonly stats: PopulationStats;
+  private generation = 1;
+  private savedBestGenome: BrainGenome | null = null;
+  private savedBestProgress = 0;
 
   public constructor(options: PopulationManagerOptions) {
     this.spawnX = options.spawnX;
     this.spawnY = options.spawnY;
     this.populationSize = Math.max(1, options.populationSize ?? DEFAULT_POPULATION_SIZE);
+    this.generation = Math.max(1, options.generation ?? 1);
+    this.savedBestGenome = this.loadSavedBestGenome();
+    this.savedBestProgress = this.loadSavedBestProgress();
     this.stats = {
       populationSize: this.populationSize,
       aliveCount: this.populationSize,
       crashedCount: 0,
       bestCarIndex: 0,
       bestProgress: 0,
-      generation: options.generation ?? 1,
+      generation: this.generation,
     };
 
     this.reset();
@@ -61,29 +75,46 @@ export class PopulationManager {
 
   public reset(): void {
     this.clear();
+    const seedGenome = this.savedBestGenome;
 
     for (let index = 0; index < this.populationSize; index += 1) {
-      this.cars.push(
-        new Car(
-          this.spawnX,
-          this.spawnY,
-          POPULATION_CAR_WIDTH,
-          POPULATION_CAR_HEIGHT,
-          DEFAULT_CAR_PHYSICS,
-          {
-            controlMode: 'ai',
-          }
-        )
+      const car = new Car(
+        this.spawnX,
+        this.spawnY,
+        POPULATION_CAR_WIDTH,
+        POPULATION_CAR_HEIGHT,
+        DEFAULT_CAR_PHYSICS,
+        {
+          controlMode: 'ai',
+        }
       );
+
+      if (seedGenome !== null && car.brain !== null) {
+        if (index === 0) {
+          car.brain.importGenome(cloneBrainGenome(seedGenome));
+        } else {
+          applyMutatedGenome(
+            car.brain,
+            seedGenome,
+            this.getMutationAmount(index)
+          );
+        }
+      }
+
+      this.cars.push(car);
       this.progressByCar.push(0);
+      this.stallTimeByCar.push(0);
     }
 
+    this.stats.generation = this.generation;
     this.refreshStats();
+    this.generation += 1;
   }
 
   public update(deltaTimeSeconds: number, roadBorders: readonly Segment[]): void {
     for (let index = 0; index < this.cars.length; index += 1) {
       const car = this.cars[index];
+      const previousBestProgress = this.progressByCar[index];
 
       car.update(deltaTimeSeconds, roadBorders);
 
@@ -91,6 +122,21 @@ export class PopulationManager {
 
       if (worldProgress > this.progressByCar[index]) {
         this.progressByCar[index] = worldProgress;
+      }
+
+      if (car.damaged) {
+        continue;
+      }
+
+      if (this.progressByCar[index] > previousBestProgress + STALL_PROGRESS_EPSILON) {
+        this.stallTimeByCar[index] = 0;
+        continue;
+      }
+
+      this.stallTimeByCar[index] += deltaTimeSeconds;
+
+      if (this.stallTimeByCar[index] >= STALL_TIMEOUT_SECONDS) {
+        car.retire();
       }
     }
   }
@@ -151,6 +197,7 @@ export class PopulationManager {
     this.stats.crashedCount = this.cars.length - aliveCount;
     this.stats.bestCarIndex = selectedBestIndex;
     this.stats.bestProgress = selectedBestProgress;
+    this.persistBestCar(this.cars[selectedBestIndex], selectedBestProgress);
   }
 
   public render(ctx: CanvasRenderingContext2D): void {
@@ -245,6 +292,66 @@ export class PopulationManager {
     ctx.fill();
   }
 
+  private getMutationAmount(index: number): number {
+    if (index <= 4) {
+      return DEFAULT_MUTATION_AMOUNT * 0.45;
+    }
+
+    if (index <= 12) {
+      return DEFAULT_MUTATION_AMOUNT * 0.8;
+    }
+
+    return DEFAULT_MUTATION_AMOUNT;
+  }
+
+  private persistBestCar(car: Car, progress: number): void {
+    if (car.brain === null || progress <= this.savedBestProgress) {
+      return;
+    }
+
+    this.savedBestGenome = cloneBrainGenome(car.brain.exportGenome());
+    this.savedBestProgress = progress;
+
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.localStorage.setItem(
+      BEST_BRAIN_STORAGE_KEY,
+      JSON.stringify(this.savedBestGenome)
+    );
+    window.localStorage.setItem(BEST_PROGRESS_STORAGE_KEY, String(progress));
+  }
+
+  private loadSavedBestGenome(): BrainGenome | null {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+
+    const rawGenome = window.localStorage.getItem(BEST_BRAIN_STORAGE_KEY);
+
+    if (rawGenome === null) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(rawGenome) as BrainGenome;
+    } catch {
+      return null;
+    }
+  }
+
+  private loadSavedBestProgress(): number {
+    if (typeof window === 'undefined') {
+      return 0;
+    }
+
+    const rawProgress = window.localStorage.getItem(BEST_PROGRESS_STORAGE_KEY);
+    const parsedProgress = rawProgress === null ? Number.NaN : Number(rawProgress);
+
+    return Number.isFinite(parsedProgress) ? parsedProgress : 0;
+  }
+
   private clear(): void {
     for (let index = 0; index < this.cars.length; index += 1) {
       this.cars[index].destroy();
@@ -252,5 +359,6 @@ export class PopulationManager {
 
     this.cars.length = 0;
     this.progressByCar.length = 0;
+    this.stallTimeByCar.length = 0;
   }
 }

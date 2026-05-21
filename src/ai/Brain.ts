@@ -25,6 +25,10 @@ export interface BrainSnapshot {
   readonly hiddenLayers: readonly NeuralLayerSnapshot[];
 }
 
+export interface BrainGenome {
+  readonly network: NeuralNetworkSnapshot;
+}
+
 export class Brain {
   public readonly network: NeuralNetwork;
   public readonly lastOutputs: number[];
@@ -40,16 +44,52 @@ export class Brain {
 
   public decide(sensorInputs: readonly number[]): ControlState {
     const outputs = this.network.feedForward(sensorInputs);
+    const outputLayer = this.network.layers[this.network.layers.length - 1];
+    const visualOutputs = outputLayer?.visualOutputs ?? outputs;
 
     for (let index = 0; index < this.lastOutputs.length; index += 1) {
       this.lastOutputs[index] = outputs[index];
     }
 
+    const forwardVisual = visualOutputs[0] ?? 0;
+    const leftVisual = visualOutputs[1] ?? 0;
+    const rightVisual = visualOutputs[2] ?? 0;
+    const reverseVisual = visualOutputs[3] ?? 0;
+    const noDriveCommand = outputs[0] === 0 && outputs[3] === 0;
+    const bothDriveCommands = outputs[0] === 1 && outputs[3] === 1;
+    const noSteerCommand = outputs[1] === 0 && outputs[2] === 0;
+    const bothSteerCommands = outputs[1] === 1 && outputs[2] === 1;
+
+    const forward =
+      noDriveCommand
+        ? forwardVisual >= reverseVisual
+        : bothDriveCommands
+          ? forwardVisual >= reverseVisual
+          : outputs[0] === 1;
+    const reverse =
+      noDriveCommand
+        ? false
+        : bothDriveCommands
+          ? reverseVisual > forwardVisual
+          : outputs[3] === 1;
+    const left =
+      noSteerCommand
+        ? false
+        : bothSteerCommands
+          ? leftVisual > rightVisual
+          : outputs[1] === 1;
+    const right =
+      noSteerCommand
+        ? false
+        : bothSteerCommands
+          ? rightVisual >= leftVisual
+          : outputs[2] === 1;
+
     return {
-      forward: outputs[0] === 1,
-      left: outputs[1] === 1,
-      right: outputs[2] === 1,
-      reverse: outputs[3] === 1,
+      forward,
+      left,
+      right,
+      reverse,
     };
   }
 
@@ -65,5 +105,15 @@ export class Brain {
       network,
       hiddenLayers: network.layers.slice(0, -1),
     };
+  }
+
+  public exportGenome(): BrainGenome {
+    return {
+      network: this.network.getSnapshot(),
+    };
+  }
+
+  public importGenome(genome: BrainGenome): void {
+    this.network.applySnapshot(genome.network);
   }
 }

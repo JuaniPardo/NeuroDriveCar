@@ -12,9 +12,9 @@ const PANEL_OK_COLOR = '#cde7d5';
 const PANEL_AI_COLOR = '#8fe1ff';
 const PANEL_TITLE = 'NEURODRIVECAR / MVP 09';
 const SENSOR_STRIP_HEIGHT = 16;
-const STATUS_LINE_HEIGHT = 28;
+const STATUS_LINE_HEIGHT = 25;
 const STATUS_TOP_PADDING = 14;
-const STATUS_SECTION_GAP = 6;
+const STATUS_SECTION_GAP = 8;
 
 export interface HudRenderData {
   width: number;
@@ -50,8 +50,8 @@ export class Hud {
     const margin = 16;
     const statusPanelX = margin;
     const statusPanelY = margin;
-    const statusPanelWidth = Math.min(232, Math.max(196, data.width * 0.19));
-    const statusPanelHeight = Math.min(418, Math.max(372, data.height - margin * 2));
+    const statusPanelWidth = Math.min(340, Math.max(304, data.width * 0.26));
+    const statusPanelHeight = Math.min(472, Math.max(420, data.height - margin * 2));
     const neuralPanelWidth = Math.min(420, Math.max(320, data.width * 0.22));
     const neuralPanelHeight = Math.min(360, Math.max(300, data.height * 0.34));
     const neuralPanelX = data.width - neuralPanelWidth - margin;
@@ -88,7 +88,7 @@ export class Hud {
     const controlModeColor = data.controlMode === 'ai' ? PANEL_AI_COLOR : PANEL_TEXT_COLOR;
     const textX = x + 12;
     const line1Y = y + STATUS_TOP_PADDING;
-    const compactLineHeight = STATUS_LINE_HEIGHT - 4;
+    const compactLineHeight = STATUS_LINE_HEIGHT;
     const line2Y = line1Y + compactLineHeight;
     const line3Y = line2Y + compactLineHeight + STATUS_SECTION_GAP;
     const line4Y = line3Y + compactLineHeight;
@@ -111,7 +111,7 @@ export class Hud {
     ctx.fillRect(x, y, width, height);
     ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
 
-    ctx.font = '11px "SF Mono", Monaco, monospace';
+    ctx.font = '10px "SF Mono", Monaco, monospace';
     ctx.textBaseline = 'top';
     ctx.fillStyle = PANEL_TEXT_COLOR;
     ctx.fillText(PANEL_TITLE, textX, line1Y);
@@ -139,6 +139,7 @@ export class Hud {
     ctx.fillText(`T SPEED ${data.trafficTargetSpeed.toFixed(1)}`, textX, line13Y);
 
     ctx.fillStyle = PANEL_MUTED_TEXT_COLOR;
+    ctx.font = '9px "SF Mono", Monaco, monospace';
     ctx.fillText(`L SPD ${data.laneSpeedLabel}`, textX, sensorLabelY - 44);
     ctx.fillText(`S HIT ${data.sensorHitCount}`, textX, sensorLabelY - 22);
     ctx.fillText(`CTRL ${formatControlState(data.controlState)}`, textX, sensorLabelY);

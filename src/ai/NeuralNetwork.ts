@@ -65,6 +65,24 @@ export class NeuralLayer {
       visualOutputs: this.visualOutputs,
     };
   }
+
+  public applySnapshot(snapshot: NeuralLayerSnapshot): void {
+    if (
+      snapshot.inputCount !== this.inputCount ||
+      snapshot.outputCount !== this.outputCount
+    ) {
+      throw new Error('NeuralLayer snapshot shape does not match the target layer.');
+    }
+
+    for (let outputIndex = 0; outputIndex < this.outputCount; outputIndex += 1) {
+      this.biases[outputIndex] = snapshot.biases[outputIndex];
+
+      for (let inputIndex = 0; inputIndex < this.inputCount; inputIndex += 1) {
+        this.weights[outputIndex][inputIndex] =
+          snapshot.weights[outputIndex][inputIndex];
+      }
+    }
+  }
 }
 
 export class NeuralNetwork {
@@ -111,6 +129,22 @@ export class NeuralNetwork {
       layerSizes: this.layerSizes,
       layers: this.layers.map((layer) => layer.getSnapshot()),
     };
+  }
+
+  public applySnapshot(snapshot: NeuralNetworkSnapshot): void {
+    if (snapshot.layerSizes.length !== this.layerSizes.length) {
+      throw new Error('NeuralNetwork snapshot layer count does not match.');
+    }
+
+    for (let index = 0; index < this.layerSizes.length; index += 1) {
+      if (snapshot.layerSizes[index] !== this.layerSizes[index]) {
+        throw new Error('NeuralNetwork snapshot layer sizes do not match.');
+      }
+    }
+
+    for (let index = 0; index < this.layers.length; index += 1) {
+      this.layers[index].applySnapshot(snapshot.layers[index]);
+    }
   }
 }
 
