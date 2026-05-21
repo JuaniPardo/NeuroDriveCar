@@ -9,13 +9,24 @@ import {
   type SimulationControlSnapshot,
   type SimulationSpeedOption,
 } from './simulationControls';
-import { TrafficManager, type TrainingTrafficPhase } from '../traffic/TrafficManager';
+import { TrafficManager } from '../traffic/TrafficManager';
+import {
+  createTrafficSettingsFromPhase,
+  deriveTrafficPhase,
+  type TrafficDensity,
+  type TrafficSettings,
+  type TrafficSpawnDistancePreset,
+  type TrafficSpeedPreset,
+  type TrainingTrafficPhase,
+} from '../traffic/trafficSettings';
 import { ControlsPanel } from '../ui/ControlsPanel';
 import { Hud } from '../ui/Hud';
 import {
   deleteBestBrain,
   loadBestBrain,
+  loadTrafficSettings,
   saveBestBrain,
+  saveTrafficSettings,
   type SavedBrainRecord,
 } from '../utils/storage';
 import { Road } from '../world/Road';
@@ -78,6 +89,8 @@ export class Game implements Updatable, Renderable {
   private followTargetY = 0;
   private savedBrainRecord: SavedBrainRecord | null = null;
   private persistenceMessage = RANDOM_POPULATION_MESSAGE;
+  private selectedTrafficSettings: TrafficSettings = loadTrafficSettings();
+  private activeTrafficSettings: TrafficSettings = loadTrafficSettings();
   private readonly controlState: SimulationControlState = {
     paused: false,
     runningSpeedMultiplier: DEFAULT_RUNNING_SPEED,
@@ -127,6 +140,21 @@ export class Game implements Updatable, Renderable {
       },
       onMutationRateChange: (rate: MutationRateOption) => {
         this.setMutationRate(rate);
+      },
+      onTrafficEnabledChange: (enabled: boolean) => {
+        this.setTrafficEnabled(enabled);
+      },
+      onTrafficPhaseChange: (phase: TrainingTrafficPhase) => {
+        this.setTrafficPhase(phase);
+      },
+      onTrafficDensityChange: (density: TrafficDensity) => {
+        this.setTrafficDensity(density);
+      },
+      onTrafficSpeedPresetChange: (preset: TrafficSpeedPreset) => {
+        this.setTrafficSpeedPreset(preset);
+      },
+      onTrafficSpawnDistancePresetChange: (preset: TrafficSpawnDistancePreset) => {
+        this.setTrafficSpawnDistancePreset(preset);
       },
     });
     this.resizeObserver = () => {
@@ -197,6 +225,8 @@ export class Game implements Updatable, Renderable {
       trafficCount: this.trafficManager.getActiveCount(),
       trafficTargetSpeed: this.trafficManager.getTargetSpeed(),
       laneSpeedLabel: this.trafficManager.getLaneSpeedDebugLabel(),
+      activeTrafficSettings: this.activeTrafficSettings,
+      selectedTrafficSettings: this.selectedTrafficSettings,
       sensorHitCount: bestCar.getSensorHitCount(),
       sensorReadings: bestCar.getSensorReadings(),
       controlState: bestCar.getControlState(),
@@ -225,6 +255,8 @@ export class Game implements Updatable, Renderable {
       activeMutationRate: populationStats.mutationAmount,
       populationSource: populationStats.populationSource,
       savedBrainExists: this.savedBrainRecord !== null,
+      activeTrafficSettings: this.activeTrafficSettings,
+      selectedTrafficSettings: this.selectedTrafficSettings,
     });
   }
 
@@ -469,7 +501,10 @@ export class Game implements Updatable, Renderable {
   }
 
   private synchronizeSimulationWorld(): void {
-    this.trafficManager.setTrainingPhase(this.getTrainingTrafficPhase());
+    this.trafficManager.setSettings(this.selectedTrafficSettings);
+    this.activeTrafficSettings = {
+      ...this.selectedTrafficSettings,
+    };
     this.trafficManager.reset(this.populationManager.getBestCar());
     this.populationManager.updateSensors(
       this.road.borderSegments,
@@ -552,6 +587,69 @@ export class Game implements Updatable, Renderable {
       `Mutation rate armed: ${nextMutationRate.toFixed(2)}. Restart to apply.`;
   }
 
+  private setTrafficEnabled(enabled: boolean): void {
+    if (!enabled) {
+      this.updateSelectedTrafficSettings(
+        {
+          enabled: false,
+          density: 'none',
+        },
+        'Traffic disabled. Restart to apply.'
+      );
+      return;
+    }
+
+    const resumedPhase =
+      this.selectedTrafficSettings.phase === 'road-only'
+        ? 'normal-traffic'
+        : this.selectedTrafficSettings.phase;
+    const resumedPreset = createTrafficSettingsFromPhase(resumedPhase);
+
+    this.updateSelectedTrafficSettings(
+      {
+        enabled: true,
+        density: resumedPreset.density,
+      },
+      'Traffic enabled. Restart to apply.'
+    );
+  }
+
+  private setTrafficPhase(phase: TrainingTrafficPhase): void {
+    const nextSettings = createTrafficSettingsFromPhase(phase);
+
+    this.selectedTrafficSettings = saveTrafficSettings(nextSettings);
+    this.controlState.lastActionMessage =
+      `Traffic phase armed: ${phase}. Restart to apply.`;
+  }
+
+  private setTrafficDensity(density: TrafficDensity): void {
+    this.updateSelectedTrafficSettings(
+      {
+        enabled: density !== 'none',
+        density,
+      },
+      `Traffic density armed: ${density}. Restart to apply.`
+    );
+  }
+
+  private setTrafficSpeedPreset(preset: TrafficSpeedPreset): void {
+    this.updateSelectedTrafficSettings(
+      {
+        speedPreset: preset,
+      },
+      `Traffic speed armed: ${preset}. Restart to apply.`
+    );
+  }
+
+  private setTrafficSpawnDistancePreset(preset: TrafficSpawnDistancePreset): void {
+    this.updateSelectedTrafficSettings(
+      {
+        spawnDistancePreset: preset,
+      },
+      `Traffic spawn armed: ${preset}. Restart to apply.`
+    );
+  }
+
   private cyclePopulationSize(direction: -1 | 1): void {
     const currentIndex = POPULATION_SIZE_OPTIONS.indexOf(
       this.controlState.selectedPopulationSize
@@ -594,23 +692,6 @@ export class Game implements Updatable, Renderable {
     return `Restarted GEN ${this.populationManager.getStats().generation} @ ${this.getSimulationSpeedMultiplier()}x.`;
   }
 
-  private getTrainingTrafficPhase(): TrainingTrafficPhase {
-    const populationStats = this.populationManager.getStats();
-
-    if (
-      populationStats.populationSource === 'random' &&
-      populationStats.generation <= 2
-    ) {
-      return 'road-only';
-    }
-
-    if (populationStats.generation <= 5) {
-      return 'sparse-traffic';
-    }
-
-    return 'normal-traffic';
-  }
-
   private renderWorldBackdrop(
     ctx: CanvasRenderingContext2D,
     visibleTop: number,
@@ -640,6 +721,23 @@ export class Game implements Updatable, Renderable {
     gradient.addColorStop(1, BACKGROUND_BOTTOM_COLOR);
 
     return gradient;
+  }
+
+  private updateSelectedTrafficSettings(
+    partialSettings: Partial<TrafficSettings>,
+    message: string
+  ): void {
+    const nextSettings = {
+      ...this.selectedTrafficSettings,
+      ...partialSettings,
+    };
+
+    if (partialSettings.enabled !== undefined || partialSettings.density !== undefined) {
+      nextSettings.phase = deriveTrafficPhase(nextSettings);
+    }
+
+    this.selectedTrafficSettings = saveTrafficSettings(nextSettings);
+    this.controlState.lastActionMessage = message;
   }
 }
 

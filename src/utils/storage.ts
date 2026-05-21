@@ -3,15 +3,30 @@ import type {
   NeuralLayerSnapshot,
   NeuralNetworkSnapshot,
 } from '../ai/NeuralNetwork';
+import {
+  DEFAULT_TRAFFIC_SETTINGS,
+  isTrafficDensity,
+  isTrafficSpawnDistancePreset,
+  isTrafficSpeedPreset,
+  isTrainingTrafficPhase,
+  type TrafficSettings,
+} from '../traffic/trafficSettings';
 
 export const BEST_BRAIN_STORAGE_KEY = 'neuroDriveCar.bestBrain.v1';
+export const TRAFFIC_SETTINGS_STORAGE_KEY = 'neuroDriveCar.trafficSettings.v1';
 const SAVED_BRAIN_VERSION = 1;
+const SAVED_TRAFFIC_SETTINGS_VERSION = 1;
 
 export interface SavedBrainRecord {
   version: typeof SAVED_BRAIN_VERSION;
   savedAt: number;
   bestDistance: number;
   genome: BrainGenome;
+}
+
+interface SavedTrafficSettingsRecord {
+  version: typeof SAVED_TRAFFIC_SETTINGS_VERSION;
+  settings: TrafficSettings;
 }
 
 export type LoadSavedBrainResult =
@@ -100,6 +115,57 @@ export function deleteBestBrain(): void {
   storage.removeItem(BEST_BRAIN_STORAGE_KEY);
 }
 
+export function saveTrafficSettings(settings: TrafficSettings): TrafficSettings {
+  const storage = getLocalStorage();
+
+  if (storage !== null) {
+    const record: SavedTrafficSettingsRecord = {
+      version: SAVED_TRAFFIC_SETTINGS_VERSION,
+      settings,
+    };
+
+    storage.setItem(TRAFFIC_SETTINGS_STORAGE_KEY, JSON.stringify(record));
+  }
+
+  return settings;
+}
+
+export function loadTrafficSettings(): TrafficSettings {
+  const storage = getLocalStorage();
+
+  if (storage === null) {
+    return {
+      ...DEFAULT_TRAFFIC_SETTINGS,
+    };
+  }
+
+  const rawValue = storage.getItem(TRAFFIC_SETTINGS_STORAGE_KEY);
+
+  if (rawValue === null) {
+    return {
+      ...DEFAULT_TRAFFIC_SETTINGS,
+    };
+  }
+
+  try {
+    const parsedValue = JSON.parse(rawValue) as unknown;
+
+    if (!isSavedTrafficSettingsRecord(parsedValue)) {
+      return {
+        ...DEFAULT_TRAFFIC_SETTINGS,
+      };
+    }
+
+    return {
+      ...parsedValue.settings,
+    };
+  } catch {
+    return {
+      ...DEFAULT_TRAFFIC_SETTINGS,
+    };
+  }
+}
+
 function getLocalStorage(): Storage | null {
   if (typeof window === 'undefined') {
     return null;
@@ -118,6 +184,31 @@ function isSavedBrainRecord(value: unknown): value is SavedBrainRecord {
     isFiniteNumber(value.savedAt) &&
     isFiniteNumber(value.bestDistance) &&
     isBrainGenome(value.genome)
+  );
+}
+
+function isSavedTrafficSettingsRecord(
+  value: unknown
+): value is SavedTrafficSettingsRecord {
+  return (
+    isObject(value) &&
+    value.version === SAVED_TRAFFIC_SETTINGS_VERSION &&
+    isTrafficSettings(value.settings)
+  );
+}
+
+function isTrafficSettings(value: unknown): value is TrafficSettings {
+  return (
+    isObject(value) &&
+    typeof value.enabled === 'boolean' &&
+    typeof value.density === 'string' &&
+    typeof value.phase === 'string' &&
+    typeof value.speedPreset === 'string' &&
+    typeof value.spawnDistancePreset === 'string' &&
+    isTrafficDensity(value.density) &&
+    isTrainingTrafficPhase(value.phase) &&
+    isTrafficSpeedPreset(value.speedPreset) &&
+    isTrafficSpawnDistancePreset(value.spawnDistancePreset)
   );
 }
 

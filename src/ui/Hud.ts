@@ -8,6 +8,7 @@ import {
   type SimulationSpeedOption,
 } from '../game/simulationControls';
 import type { PopulationSource } from '../population/PopulationManager';
+import type { TrafficSettings } from '../traffic/trafficSettings';
 import { FONT_MONO, THEME } from '../utils/visualTheme';
 import { NeuralVisualizer } from './NeuralVisualizer';
 
@@ -28,6 +29,8 @@ export interface HudRenderData {
   trafficCount: number;
   trafficTargetSpeed: number;
   laneSpeedLabel: string;
+  activeTrafficSettings: TrafficSettings;
+  selectedTrafficSettings: TrafficSettings;
   sensorHitCount: number;
   sensorReadings: readonly number[];
   controlState: Readonly<ControlState>;
@@ -62,9 +65,9 @@ export class Hud {
     const statusPanelX = margin;
     const statusPanelY = margin;
     const statusPanelWidth = Math.min(324, Math.max(288, data.width * 0.24));
-    const statusPanelHeight = 562;
+    const statusPanelHeight = 652;
     const instructionsPanelY = statusPanelY + statusPanelHeight + 10;
-    const instructionsPanelHeight = 108;
+    const instructionsPanelHeight = 122;
     const neuralPanelWidth = Math.min(420, Math.max(320, data.width * 0.22));
     const neuralPanelHeight = Math.min(360, Math.max(300, data.height * 0.34));
     const neuralPanelX = data.width - neuralPanelWidth - margin;
@@ -289,7 +292,68 @@ export class Hud {
     cursorY += 14;
     this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'COUNT', String(data.trafficCount));
     cursorY += STATUS_LINE_HEIGHT;
-    this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'TARGET', data.trafficTargetSpeed.toFixed(1));
+    this.renderKeyValueRow(
+      ctx,
+      textX,
+      valueX,
+      cursorY,
+      'PHASE',
+      data.activeTrafficSettings.phase
+    );
+    cursorY += STATUS_LINE_HEIGHT;
+    this.renderKeyValueRow(
+      ctx,
+      textX,
+      valueX,
+      cursorY,
+      'ENABLED',
+      data.activeTrafficSettings.enabled ? 'TRUE' : 'FALSE'
+    );
+    cursorY += STATUS_LINE_HEIGHT;
+    this.renderKeyValueRow(
+      ctx,
+      textX,
+      valueX,
+      cursorY,
+      'DENS',
+      data.activeTrafficSettings.density.toUpperCase()
+    );
+    cursorY += STATUS_LINE_HEIGHT;
+    this.renderKeyValueRow(
+      ctx,
+      textX,
+      valueX,
+      cursorY,
+      'SPEED',
+      data.activeTrafficSettings.speedPreset.toUpperCase()
+    );
+    cursorY += STATUS_LINE_HEIGHT;
+    this.renderKeyValueRow(
+      ctx,
+      textX,
+      valueX,
+      cursorY,
+      'SPAWN',
+      data.activeTrafficSettings.spawnDistancePreset.toUpperCase()
+    );
+    cursorY += STATUS_LINE_HEIGHT;
+    this.renderKeyValueRow(
+      ctx,
+      textX,
+      valueX,
+      cursorY,
+      'NEXT',
+      formatTrafficSettingsLabel(data.selectedTrafficSettings)
+    );
+    cursorY += STATUS_LINE_HEIGHT;
+    this.renderKeyValueRow(
+      ctx,
+      textX,
+      valueX,
+      cursorY,
+      'TARGET',
+      data.trafficTargetSpeed.toFixed(1)
+    );
     cursorY += STATUS_LINE_HEIGHT;
     this.renderKeyValueRow(ctx, textX, valueX, cursorY, 'LANES', data.laneSpeedLabel);
     cursorY += STATUS_LINE_HEIGHT;
@@ -361,6 +425,7 @@ export class Hud {
     const line3Y = line2Y + 14;
     const line4Y = line3Y + 14;
     const line5Y = line4Y + 14;
+    const line6Y = line5Y + 14;
 
     ctx.save();
     ctx.fillStyle = THEME.hud.panelBackground;
@@ -379,7 +444,8 @@ export class Hud {
     ctx.fillText('P pause/resume   R restart   1-4 speed presets', textX, line2Y);
     ctx.fillText('[ and ] arm population size   - and = arm mutation', textX, line3Y);
     ctx.fillText('S save best brain   L load saved brain   D delete saved', textX, line4Y);
-    ctx.fillText('Population/mutation apply on restart. Brain only uses localStorage.', textX, line5Y);
+    ctx.fillText('Traffic phase/settings apply on restart or new generation.', textX, line5Y);
+    ctx.fillText('Population/mutation apply on restart. Brain only uses localStorage.', textX, line6Y);
     ctx.restore();
   }
 
@@ -434,4 +500,13 @@ function truncateStatusMessage(value: string, maxLength: number): string {
   }
 
   return `${value.slice(0, Math.max(0, maxLength - 1))}…`;
+}
+
+function formatTrafficSettingsLabel(settings: TrafficSettings): string {
+  return [
+    settings.enabled ? 'ON' : 'OFF',
+    settings.density.toUpperCase(),
+    settings.speedPreset.toUpperCase(),
+    settings.spawnDistancePreset.toUpperCase(),
+  ].join(' ');
 }

@@ -84,6 +84,19 @@ canvas {
   gap: 6px;
 }
 
+.controls-panel__stack {
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.controls-panel__field {
+  display: grid;
+  gap: 4px;
+  color: var(--panel-bright);
+  font-size: 10px;
+}
+
 .controls-panel__actions {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
