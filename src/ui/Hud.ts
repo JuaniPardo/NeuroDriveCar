@@ -230,8 +230,8 @@ export class Hud {
       [
         row('FRONT', data.sensorAwareness.frontObstacleDistance === null ? '--' : formatValue(data.sensorAwareness.frontObstacleDistance, 0)),
         row('EDGE', formatValue(data.sensorAwareness.edgeProximity, 2)),
-        row('BLKD', formatValue(data.laneAwareness.currentLaneBlocked, 0)),
-        row('CLR', `${formatValue(data.laneAwareness.leftLaneClear, 0)}/${formatValue(data.laneAwareness.rightLaneClear, 0)}`),
+        row('BLKD', formatValue(data.laneAwareness.currentLaneBlocked, 2)),
+        row('CLR', `${formatValue(data.laneAwareness.leftLaneClear, 2)}/${formatValue(data.laneAwareness.rightLaneClear, 2)}`),
       ],
       data.sensorReadings
     );

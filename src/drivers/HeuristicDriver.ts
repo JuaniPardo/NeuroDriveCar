@@ -5,6 +5,9 @@ import { Road } from '../world/Road';
 const TARGET_LANE_REACHED_EPSILON = 0.18;
 const FRONT_OBSTACLE_BRAKE_DISTANCE = 26;
 const EDGE_DANGER_THRESHOLD = 0.72;
+const CURRENT_LANE_BLOCKED_THRESHOLD = 0.35;
+const ADJACENT_LANE_CLEAR_THRESHOLD = 0.55;
+const EMERGENCY_ADJACENT_LANE_CLEAR_THRESHOLD = 0.45;
 
 export interface HeuristicDriverContext {
   x: number;
@@ -46,7 +49,7 @@ export class HeuristicDriver {
       this.targetLane = currentLane;
     }
 
-    if (context.currentLaneBlocked >= 0.5) {
+    if (context.currentLaneBlocked >= CURRENT_LANE_BLOCKED_THRESHOLD) {
       this.targetLane = this.chooseSaferLane(context, currentLane);
     } else if (this.targetLane !== currentLane) {
       const targetLaneCenter = context.road.getLaneCenter(this.targetLane);
@@ -71,9 +74,9 @@ export class HeuristicDriver {
     const shouldBrake =
       context.frontObstacleDistance !== null &&
       context.frontObstacleDistance <= FRONT_OBSTACLE_BRAKE_DISTANCE &&
-      context.currentLaneBlocked >= 0.5 &&
-      context.leftLaneClear < 0.5 &&
-      context.rightLaneClear < 0.5;
+      context.currentLaneBlocked >= CURRENT_LANE_BLOCKED_THRESHOLD &&
+      context.leftLaneClear < EMERGENCY_ADJACENT_LANE_CLEAR_THRESHOLD &&
+      context.rightLaneClear < EMERGENCY_ADJACENT_LANE_CLEAR_THRESHOLD;
 
     this.reason = this.describeReason(
       context,
@@ -103,9 +106,11 @@ export class HeuristicDriver {
     context: HeuristicDriverContext,
     currentLane: number
   ): number {
-    const canGoLeft = currentLane > 0 && context.leftLaneClear >= 0.5;
+    const canGoLeft =
+      currentLane > 0 && context.leftLaneClear >= ADJACENT_LANE_CLEAR_THRESHOLD;
     const canGoRight =
-      currentLane < context.road.laneCount - 1 && context.rightLaneClear >= 0.5;
+      currentLane < context.road.laneCount - 1 &&
+      context.rightLaneClear >= ADJACENT_LANE_CLEAR_THRESHOLD;
 
     if (canGoLeft && canGoRight) {
       const roadMidLane = Math.floor(context.road.laneCount * 0.5);
@@ -138,7 +143,10 @@ export class HeuristicDriver {
       return 'edge-avoid';
     }
 
-    if (context.currentLaneBlocked >= 0.5 && targetLane !== currentLane) {
+    if (
+      context.currentLaneBlocked >= CURRENT_LANE_BLOCKED_THRESHOLD &&
+      targetLane !== currentLane
+    ) {
       return 'front-blocked';
     }
 

@@ -27,7 +27,7 @@ import {
 import {
   LaneFollowingController,
 } from '../controller/LaneFollowingController';
-import { clamp } from '../utils/math';
+import { clamp, inverseLerp, lerp } from '../utils/math';
 import { THEME } from '../utils/visualTheme';
 import { Road } from '../world/Road';
 import { Controls } from './Controls';
@@ -51,6 +51,10 @@ const CURRENT_LANE_BLOCKED_DISTANCE = 160;
 const ADJACENT_LANE_AHEAD_CLEARANCE_DISTANCE = 190;
 const ADJACENT_LANE_REAR_CLEARANCE_DISTANCE = 96;
 const STRONG_STEER_THRESHOLD = 0.3;
+const AUTONOMOUS_SPEED_DEADBAND = 10;
+const TRAFFIC_SPEED_ADAPT_DISTANCE = 150;
+const TRAFFIC_SPEED_MATCH_DISTANCE = 72;
+const TRAFFIC_SPEED_HARD_BRAKE_DISTANCE = 24;
 
 export interface LaneAwarenessSnapshot {
   laneCenterOffsetNormalized: number;
@@ -67,6 +71,11 @@ export interface SensorAwarenessSnapshot {
   edgeProximity: number;
   hitSummary: SensorHitSummary;
   road: Road | null;
+}
+
+interface LaneLeadTrafficState {
+  distance: number;
+  speedRatio: number;
 }
 
 export interface SteeringDebugSnapshot {
@@ -301,9 +310,9 @@ export class Car {
     }
 
     const throttleInput =
-      this.controlMode === 'manual' 
-        ? (Number(this.controls.forward) - Number(this.controls.reverse))
-        : (this.drivingIntent.preferredSpeedRatio > 0.1 ? 1 : -1);
+      this.controlMode === 'manual'
+        ? Number(this.controls.forward) - Number(this.controls.reverse)
+        : this.getAutonomousThrottleInput();
 
     this.speed = updateSpeed(
       this.speed,
@@ -788,7 +797,7 @@ export class Car {
           this.drivingIntent.targetLane = Math.min(road.laneCount - 1, this.drivingIntent.targetLane + 1);
         }
       }
-      this.drivingIntent.preferredSpeedRatio = decision.reverse ? 0.6 : 1.0;
+      this.drivingIntent.preferredSpeedRatio = decision.reverse ? 0.35 : 1.0;
       return;
     }
 
@@ -822,7 +831,20 @@ export class Car {
     if (this.heuristicDebug.targetLane !== null) {
       this.drivingIntent.targetLane = this.heuristicDebug.targetLane;
     }
-    this.drivingIntent.preferredSpeedRatio = decision.reverse ? 0.6 : 1.0;
+    this.drivingIntent.preferredSpeedRatio = decision.reverse ? 0 : 1.0;
+  }
+
+  private getAutonomousThrottleInput(): number {
+    const targetSpeed =
+      clamp(this.drivingIntent.preferredSpeedRatio, 0, 1) *
+      this.physics.maxForwardSpeed;
+    const speedError = targetSpeed - this.speed;
+
+    if (Math.abs(speedError) <= AUTONOMOUS_SPEED_DEADBAND) {
+      return 0;
+    }
+
+    return Math.sign(speedError);
   }
 
   private getSteeringInput(): number {
@@ -887,6 +909,7 @@ export class Car {
     this.updateSensorAwareness(road);
     this.updateBrainInputs();
     this.syncDriverToSensors();
+    this.applyTrafficAwareSpeedPreference(road, trafficCars);
   }
 
   private updateLaneAwareness(
@@ -1015,7 +1038,29 @@ export class Car {
     trafficCars: readonly Car[],
     blockedDistance: number
   ): number {
-    let nearestForwardDistance = Number.POSITIVE_INFINITY;
+    const leadTraffic = this.getNearestForwardTrafficState(
+      road,
+      laneIndex,
+      trafficCars
+    );
+
+    if (leadTraffic === null) {
+      return 0;
+    }
+
+    return clamp(1 - leadTraffic.distance / blockedDistance, 0, 1);
+  }
+
+  private getAdjacentLaneClearSignal(
+    road: Road,
+    laneIndex: number,
+    trafficCars: readonly Car[]
+  ): number {
+    if (laneIndex < 0 || laneIndex >= road.laneCount) {
+      return 0;
+    }
+
+    let highestThreat = 0;
 
     for (const trafficCar of trafficCars) {
       if (trafficCar.damaged || road.getNearestLaneIndex(trafficCar.x) !== laneIndex) {
@@ -1029,31 +1074,40 @@ export class Car {
         trafficCar.y
       );
 
-      if (relativePosition.forward <= 0) {
-        continue;
+      let threat = 0;
+
+      if (relativePosition.forward >= 0) {
+        threat =
+          1 -
+          clamp(
+            relativePosition.forward / ADJACENT_LANE_AHEAD_CLEARANCE_DISTANCE,
+            0,
+            1
+          );
+      } else {
+        threat =
+          1 -
+          clamp(
+            Math.abs(relativePosition.forward) /
+              ADJACENT_LANE_REAR_CLEARANCE_DISTANCE,
+            0,
+            1
+          );
       }
 
-      nearestForwardDistance = Math.min(
-        nearestForwardDistance,
-        relativePosition.forward
-      );
+      highestThreat = Math.max(highestThreat, threat);
     }
 
-    if (!Number.isFinite(nearestForwardDistance)) {
-      return 0;
-    }
-
-    return nearestForwardDistance <= blockedDistance ? 1 : 0;
+    return 1 - highestThreat;
   }
 
-  private getAdjacentLaneClearSignal(
+  private getNearestForwardTrafficState(
     road: Road,
     laneIndex: number,
     trafficCars: readonly Car[]
-  ): number {
-    if (laneIndex < 0 || laneIndex >= road.laneCount) {
-      return 0;
-    }
+  ): LaneLeadTrafficState | null {
+    let nearestForwardDistance = Number.POSITIVE_INFINITY;
+    let leadSpeedRatio = 0;
 
     for (const trafficCar of trafficCars) {
       if (trafficCar.damaged || road.getNearestLaneIndex(trafficCar.x) !== laneIndex) {
@@ -1068,14 +1122,92 @@ export class Car {
       );
 
       if (
-        relativePosition.forward <= ADJACENT_LANE_AHEAD_CLEARANCE_DISTANCE &&
-        relativePosition.forward >= -ADJACENT_LANE_REAR_CLEARANCE_DISTANCE
+        relativePosition.forward <= 0 ||
+        relativePosition.forward >= nearestForwardDistance
       ) {
-        return 0;
+        continue;
       }
+
+      nearestForwardDistance = relativePosition.forward;
+      leadSpeedRatio = clamp(
+        trafficCar.speed / this.physics.maxForwardSpeed,
+        0,
+        1
+      );
     }
 
-    return 1;
+    if (!Number.isFinite(nearestForwardDistance)) {
+      return null;
+    }
+
+    return {
+      distance: nearestForwardDistance,
+      speedRatio: leadSpeedRatio,
+    };
+  }
+
+  private applyTrafficAwareSpeedPreference(
+    road: Road | null,
+    trafficCars: readonly Car[]
+  ): void {
+    if (road === null || this.controlMode === 'manual') {
+      return;
+    }
+
+    const currentLaneIndex = road.getNearestLaneIndex(this.x);
+    const leadTraffic = this.getNearestForwardTrafficState(
+      road,
+      currentLaneIndex,
+      trafficCars
+    );
+
+    if (
+      leadTraffic === null ||
+      leadTraffic.distance >= TRAFFIC_SPEED_ADAPT_DISTANCE
+    ) {
+      return;
+    }
+
+    const basePreferredSpeedRatio = clamp(this.drivingIntent.preferredSpeedRatio, 0, 1);
+    const leadSpeedRatio = clamp(leadTraffic.speedRatio, 0.12, 1);
+    let trafficAwareSpeedRatio = basePreferredSpeedRatio;
+
+    if (leadTraffic.distance <= TRAFFIC_SPEED_HARD_BRAKE_DISTANCE) {
+      trafficAwareSpeedRatio = 0;
+    } else if (leadTraffic.distance <= TRAFFIC_SPEED_MATCH_DISTANCE) {
+      trafficAwareSpeedRatio = lerp(
+        0,
+        leadSpeedRatio,
+        clamp(
+          inverseLerp(
+            TRAFFIC_SPEED_HARD_BRAKE_DISTANCE,
+            TRAFFIC_SPEED_MATCH_DISTANCE,
+            leadTraffic.distance
+          ),
+          0,
+          1
+        )
+      );
+    } else {
+      trafficAwareSpeedRatio = lerp(
+        leadSpeedRatio,
+        basePreferredSpeedRatio,
+        clamp(
+          inverseLerp(
+            TRAFFIC_SPEED_MATCH_DISTANCE,
+            TRAFFIC_SPEED_ADAPT_DISTANCE,
+            leadTraffic.distance
+          ),
+          0,
+          1
+        )
+      );
+    }
+
+    this.drivingIntent.preferredSpeedRatio = Math.min(
+      basePreferredSpeedRatio,
+      trafficAwareSpeedRatio
+    );
   }
 
   private resetDrivingIntent(): void {
