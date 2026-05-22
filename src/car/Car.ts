@@ -554,6 +554,10 @@ export class Car {
     return this.sensorAwareness;
   }
 
+  public getDrivingIntent(): Readonly<DrivingIntentState> {
+    return this.drivingIntent;
+  }
+
   public getDistanceToNearestRoadBorder(
     roadBorders: readonly Segment[]
   ): number {
