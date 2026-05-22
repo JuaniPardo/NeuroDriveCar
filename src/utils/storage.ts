@@ -15,7 +15,7 @@ import {
 export const BEST_BRAIN_STORAGE_KEY = 'neuroDriveCar.bestBrain.v1';
 export const TRAFFIC_SETTINGS_STORAGE_KEY = 'neuroDriveCar.trafficSettings.v1';
 const SAVED_BRAIN_VERSION = 1;
-const BRAIN_SCHEMA_VERSION = 2;
+const BRAIN_SCHEMA_VERSION = 3;
 const SAVED_TRAFFIC_SETTINGS_VERSION = 1;
 
 export interface SavedBrainRecord {
@@ -184,6 +184,7 @@ function isSavedBrainRecord(value: unknown): value is SavedBrainRecord {
 
   return (
     value.version === SAVED_BRAIN_VERSION &&
+    value.brainSchemaVersion === BRAIN_SCHEMA_VERSION &&
     isFiniteNumber(value.savedAt) &&
     isFiniteNumber(value.bestDistance) &&
     isBrainGenome(value.genome)

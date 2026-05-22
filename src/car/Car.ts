@@ -797,7 +797,7 @@ export class Car {
           this.drivingIntent.targetLane = Math.min(road.laneCount - 1, this.drivingIntent.targetLane + 1);
         }
       }
-      this.drivingIntent.preferredSpeedRatio = decision.reverse ? 0.35 : 1.0;
+      this.drivingIntent.preferredSpeedRatio = decision.targetSpeedRatio;
       return;
     }
 

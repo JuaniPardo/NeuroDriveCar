@@ -6,7 +6,7 @@ import {
 } from './NeuralNetwork';
 
 const DEFAULT_HIDDEN_LAYER_SIZE = 6;
-const FORWARD_OUTPUT_THRESHOLD = 0.45;
+const MIN_FORWARD_SPEED_RATIO = 0.08;
 const STEERING_OUTPUT_THRESHOLD = 0.45;
 const STEER_INTENT_DEAD_ZONE = 0.05;
 
@@ -23,7 +23,7 @@ export const BRAIN_OUTPUT_LABELS = [
   'target-lane-keep',
   'target-lane-left',
   'target-lane-right',
-  'speed-slow',
+  'target-speed',
 ] as const;
 
 export type BrainOutputLabel = (typeof BRAIN_OUTPUT_LABELS)[number];
@@ -44,6 +44,7 @@ export interface BrainGenome {
 
 export interface BrainDecision extends ControlState {
   steerIntent: number;
+  targetSpeedRatio: number;
 }
 
 export interface BrainOutputDebugSnapshot {
@@ -81,14 +82,13 @@ export class Brain {
     const keepLaneVisual = visualOutputs[0] ?? 0;
     const leftLaneVisual = visualOutputs[1] ?? 0;
     const rightLaneVisual = visualOutputs[2] ?? 0;
-    const slowDownVisual = visualOutputs[3] ?? 0;
+    const targetSpeedVisual = visualOutputs[3] ?? 0;
 
     const left = leftLaneVisual > keepLaneVisual && leftLaneVisual > rightLaneVisual && leftLaneVisual > STEERING_OUTPUT_THRESHOLD;
     const right = rightLaneVisual > keepLaneVisual && rightLaneVisual > leftLaneVisual && rightLaneVisual > STEERING_OUTPUT_THRESHOLD;
-    
-    // speed-slow is active if it's the strongest or above threshold
-    const reverse = slowDownVisual > FORWARD_OUTPUT_THRESHOLD;
-    const forward = !reverse;
+    const targetSpeedRatio = clamp01(targetSpeedVisual);
+    const forward = targetSpeedRatio > MIN_FORWARD_SPEED_RATIO;
+    const reverse = !forward;
 
     const rawSteerIntent = rightLaneVisual - leftLaneVisual;
     this.lastRawSteerIntent = rawSteerIntent;
@@ -100,6 +100,7 @@ export class Brain {
       right,
       reverse,
       steerIntent,
+      targetSpeedRatio,
     };
   }
 
@@ -155,6 +156,10 @@ export class Brain {
       rawSteerIntent: this.lastRawSteerIntent,
     };
   }
+}
+
+function clamp01(value: number): number {
+  return Math.min(Math.max(value, 0), 1);
 }
 
 export function getBrainInputCount(
