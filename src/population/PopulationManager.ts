@@ -58,6 +58,7 @@ export interface PopulationManagerOptions {
 export interface PopulationResetOptions {
   populationSize?: number;
   mutationAmount?: number;
+  brainGenome?: BrainGenome | null;
 }
 
 export interface PopulationStats {
@@ -155,6 +156,10 @@ export class PopulationManager {
 
     if (options.mutationAmount !== undefined) {
       this.mutationAmount = Math.max(0, options.mutationAmount);
+    }
+
+    if (options.brainGenome !== undefined) {
+      this.setSeedGenome(options.brainGenome);
     }
 
     this.clear();

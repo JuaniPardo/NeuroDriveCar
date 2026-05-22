@@ -1,14 +1,14 @@
 import type { DriverMode } from './DriverMode';
 
 export interface ImitationSample {
-  inputs: number[];
-  outputs: {
-    forward: number;
-    brake: number;
-    steer: number;
+  readonly inputs: readonly number[];
+  readonly outputs: {
+    readonly forward: number;
+    readonly brake: number;
+    readonly steer: number;
   };
-  timestamp: number;
-  driverMode: Extract<DriverMode, 'manual' | 'heuristic'>;
+  readonly timestamp: number;
+  readonly driverMode: Extract<DriverMode, 'manual' | 'heuristic'>;
 }
 
 const DEFAULT_MAX_SAMPLES = 2048;
