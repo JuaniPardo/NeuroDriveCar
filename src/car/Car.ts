@@ -55,6 +55,10 @@ const AUTONOMOUS_SPEED_DEADBAND = 10;
 const TRAFFIC_SPEED_ADAPT_DISTANCE = 150;
 const TRAFFIC_SPEED_MATCH_DISTANCE = 72;
 const TRAFFIC_SPEED_HARD_BRAKE_DISTANCE = 24;
+const LANE_CHANGE_CONFIRMATION_SECONDS = 0.25;
+const LANE_CHANGE_COOLDOWN_SECONDS = 0.35;
+const LANE_CHANGE_REACHED_EPSILON = 0.22;
+const TACTICAL_STEP_SECONDS = 1 / 60;
 
 export interface LaneAwarenessSnapshot {
   laneCenterOffsetNormalized: number;
@@ -105,6 +109,9 @@ export interface DrivingIntentState {
   targetLane: number;
   laneChangeProgress: number;
   preferredSpeedRatio: number;
+  pendingTargetLane: number | null;
+  laneChangeDecisionTime: number;
+  laneChangeCooldown: number;
 }
 
 export type CarControlMode = DriverMode | 'traffic';
@@ -203,6 +210,9 @@ export class Car {
     targetLane: 0,
     laneChangeProgress: 0,
     preferredSpeedRatio: 1,
+    pendingTargetLane: null,
+    laneChangeDecisionTime: 0,
+    laneChangeCooldown: 0,
   };
   private heuristicDebug: HeuristicDriverDebugSnapshot = {
     reason: 'clear-forward',
@@ -784,18 +794,18 @@ export class Car {
       return;
     }
 
+    this.updateLaneChangeState(this.sensorAwareness.road);
+
     if (this.controlMode === 'ai' && this.brain !== null) {
       const decision = this.brain.decide(this.brainInputs);
       this.controls.applyState(decision);
 
-      // Map AI tactical decisions to lane intent
       if (decision.left) {
-        this.drivingIntent.targetLane = Math.max(0, this.drivingIntent.targetLane - 1);
+        this.requestLaneChange(-1);
       } else if (decision.right) {
-        const road = this.sensorAwareness.road;
-        if (road) {
-          this.drivingIntent.targetLane = Math.min(road.laneCount - 1, this.drivingIntent.targetLane + 1);
-        }
+        this.requestLaneChange(1);
+      } else if (this.drivingIntent.targetLane === this.getCurrentLaneIndex()) {
+        this.clearPendingLaneChange();
       }
       this.drivingIntent.preferredSpeedRatio = decision.targetSpeedRatio;
       return;
@@ -829,7 +839,9 @@ export class Car {
     this.heuristicDebug = this.heuristicDriver.getDebugSnapshot();
 
     if (this.heuristicDebug.targetLane !== null) {
-      this.drivingIntent.targetLane = this.heuristicDebug.targetLane;
+      this.requestAbsoluteLaneChange(this.heuristicDebug.targetLane);
+    } else if (this.drivingIntent.targetLane === this.getCurrentLaneIndex()) {
+      this.clearPendingLaneChange();
     }
     this.drivingIntent.preferredSpeedRatio = decision.reverse ? 0 : 1.0;
   }
@@ -845,6 +857,142 @@ export class Car {
     }
 
     return Math.sign(speedError);
+  }
+
+  private updateLaneChangeState(road: Road | null): void {
+    this.drivingIntent.laneChangeCooldown = Math.max(
+      0,
+      this.drivingIntent.laneChangeCooldown - TACTICAL_STEP_SECONDS
+    );
+
+    if (road === null) {
+      this.drivingIntent.laneChangeProgress = 0;
+      return;
+    }
+
+    const currentLane = road.getNearestLaneIndex(this.x);
+
+    if (
+      this.drivingIntent.pendingTargetLane === null &&
+      this.drivingIntent.laneChangeDecisionTime === 0 &&
+      this.drivingIntent.laneChangeCooldown === 0 &&
+      this.drivingIntent.laneChangeProgress === 0
+    ) {
+      this.drivingIntent.targetLane = currentLane;
+    }
+
+    if (this.drivingIntent.targetLane === currentLane) {
+      this.drivingIntent.targetLane = currentLane;
+      this.drivingIntent.laneChangeProgress = 0;
+      return;
+    }
+
+    const targetLaneCenter = road.getLaneCenter(this.drivingIntent.targetLane);
+    const halfLaneWidth = road.laneWidth * 0.5;
+    const targetLaneOffsetNormalized =
+      halfLaneWidth <= Number.EPSILON
+        ? 0
+        : clamp((this.x - targetLaneCenter) / halfLaneWidth, -2, 2);
+
+    if (Math.abs(targetLaneOffsetNormalized) <= LANE_CHANGE_REACHED_EPSILON) {
+      this.drivingIntent.targetLane = currentLane;
+      this.drivingIntent.laneChangeProgress = 0;
+      return;
+    }
+
+    this.drivingIntent.laneChangeProgress = clamp(
+      1 - Math.abs(targetLaneOffsetNormalized) * 0.5,
+      0,
+      1
+    );
+  }
+
+  private requestLaneChange(direction: -1 | 1): void {
+    const road = this.sensorAwareness.road;
+
+    if (road === null) {
+      return;
+    }
+
+    const currentLane = road.getNearestLaneIndex(this.x);
+    const requestedLane = clamp(
+      this.drivingIntent.targetLane + direction,
+      0,
+      road.laneCount - 1
+    );
+
+    if (requestedLane === currentLane && this.drivingIntent.targetLane === currentLane) {
+      this.clearPendingLaneChange();
+      return;
+    }
+
+    this.requestAbsoluteLaneChange(requestedLane);
+  }
+
+  private requestAbsoluteLaneChange(requestedLane: number): void {
+    const road = this.sensorAwareness.road;
+
+    if (road === null) {
+      return;
+    }
+
+    const currentLane = road.getNearestLaneIndex(this.x);
+    const clampedLane = clamp(requestedLane, 0, road.laneCount - 1);
+    const activeLaneChange = this.drivingIntent.targetLane !== currentLane;
+
+    if (activeLaneChange) {
+      if (clampedLane !== this.drivingIntent.targetLane) {
+        return;
+      }
+
+      this.clearPendingLaneChange();
+      return;
+    }
+
+    if (clampedLane === currentLane) {
+      this.drivingIntent.targetLane = currentLane;
+      this.clearPendingLaneChange();
+      return;
+    }
+
+    if (this.drivingIntent.laneChangeCooldown > 0) {
+      return;
+    }
+
+    if (this.drivingIntent.pendingTargetLane !== clampedLane) {
+      this.drivingIntent.pendingTargetLane = clampedLane;
+      this.drivingIntent.laneChangeDecisionTime = TACTICAL_STEP_SECONDS;
+      return;
+    }
+
+    this.drivingIntent.laneChangeDecisionTime += TACTICAL_STEP_SECONDS;
+
+    if (
+      this.drivingIntent.laneChangeDecisionTime <
+      LANE_CHANGE_CONFIRMATION_SECONDS
+    ) {
+      return;
+    }
+
+    this.drivingIntent.targetLane = clampedLane;
+    this.drivingIntent.laneChangeProgress = 0;
+    this.drivingIntent.laneChangeCooldown = LANE_CHANGE_COOLDOWN_SECONDS;
+    this.clearPendingLaneChange();
+  }
+
+  private clearPendingLaneChange(): void {
+    this.drivingIntent.pendingTargetLane = null;
+    this.drivingIntent.laneChangeDecisionTime = 0;
+  }
+
+  private getCurrentLaneIndex(): number {
+    const road = this.sensorAwareness.road;
+
+    if (road === null) {
+      return this.drivingIntent.targetLane;
+    }
+
+    return road.getNearestLaneIndex(this.x);
   }
 
   private getSteeringInput(): number {
@@ -1220,6 +1368,9 @@ export class Car {
     this.drivingIntent.targetLane = 0;
     this.drivingIntent.laneChangeProgress = 0;
     this.drivingIntent.preferredSpeedRatio = 1;
+    this.drivingIntent.pendingTargetLane = null;
+    this.drivingIntent.laneChangeDecisionTime = 0;
+    this.drivingIntent.laneChangeCooldown = 0;
     this.laneController.reset();
   }
 
