@@ -6,10 +6,10 @@ import {
 } from './NeuralNetwork';
 
 const DEFAULT_HIDDEN_LAYER_SIZE = 6;
-const FORWARD_OUTPUT_THRESHOLD = 0.48;
-const STEERING_OUTPUT_THRESHOLD = 0.5;
+const FORWARD_OUTPUT_THRESHOLD = 0.45;
+const STEERING_OUTPUT_THRESHOLD = 0.45;
 const REVERSE_OUTPUT_THRESHOLD = 0.6;
-const STEER_INTENT_DEAD_ZONE = 0.1;
+const STEER_INTENT_DEAD_ZONE = 0.05;
 const REVERSE_OBSTACLE_GATE_THRESHOLD = 0.7;
 
 // Input order: all normalized sensor rays first, then lane-aware inputs.
