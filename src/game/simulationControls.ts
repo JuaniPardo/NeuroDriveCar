@@ -12,6 +12,7 @@ export interface SimulationControlSnapshot {
   speedMultiplier: SimulationSpeedOption;
   selectedPopulationSize: PopulationSizeOption;
   selectedMutationRate: MutationRateOption;
+  laneAwareInputsEnabled: boolean;
   lastActionMessage: string;
 }
 

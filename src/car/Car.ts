@@ -120,6 +120,7 @@ export interface CarOptions {
   appearance?: Partial<CarAppearance>;
   sensor?: Partial<SensorConfig> | false;
   aiControl?: Partial<AIControlConfig>;
+  laneAwareInputsEnabled?: boolean;
 }
 
 export interface CarRenderOptions {
@@ -158,6 +159,7 @@ export class Car {
   private readonly trafficSpeed: number;
   private readonly appearanceOverrides: Partial<CarAppearance>;
   private readonly aiControl: AIControlConfig;
+  private readonly laneAwareInputsEnabled: boolean;
   private appearance: CarAppearance;
   private readonly brainInputs: number[] = [];
   private readonly brainInputLabels: string[] = [];
@@ -215,6 +217,7 @@ export class Car {
     this.controlMode = options.controlMode ?? 'manual';
     this.trafficSpeed = options.trafficSpeed ?? 0;
     this.appearanceOverrides = options.appearance ?? {};
+    this.laneAwareInputsEnabled = options.laneAwareInputsEnabled ?? true;
     this.aiControl = {
       ...DEFAULT_AI_CONTROL_CONFIG,
       ...options.aiControl,
@@ -228,7 +231,12 @@ export class Car {
         : null;
     this.brain =
       this.controlMode === 'ai' && this.sensor !== null
-        ? new Brain(getBrainInputCount(this.sensor.normalizedReadings.length))
+        ? new Brain(
+            getBrainInputCount(
+              this.sensor.normalizedReadings.length,
+              this.laneAwareInputsEnabled
+            )
+          )
         : null;
     this.heuristicDriver =
       this.controlMode === 'heuristic' && this.sensor !== null
@@ -237,7 +245,10 @@ export class Car {
 
     if (this.sensor !== null) {
       this.brainInputLabels.push(
-        ...getBrainInputLabels(this.sensor.normalizedReadings.length)
+        ...getBrainInputLabels(
+          this.sensor.normalizedReadings.length,
+          this.laneAwareInputsEnabled
+        )
       );
       this.brainInputs.push(...new Array(this.brainInputLabels.length).fill(0));
     }
@@ -981,6 +992,10 @@ export class Car {
     for (const reading of this.sensor.normalizedReadings) {
       this.brainInputs[inputIndex] = reading;
       inputIndex += 1;
+    }
+
+    if (!this.laneAwareInputsEnabled) {
+      return;
     }
 
     this.brainInputs[inputIndex] = this.laneAwareness.laneCenterOffsetNormalized;

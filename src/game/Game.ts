@@ -91,6 +91,7 @@ interface SimulationControlState {
   runningSpeedMultiplier: RunningSimulationSpeed;
   selectedPopulationSize: PopulationSizeOption;
   selectedMutationRate: MutationRateOption;
+  laneAwareInputsEnabled: boolean;
   lastActionMessage: string;
 }
 
@@ -151,6 +152,7 @@ export class Game implements Updatable, Renderable {
     runningSpeedMultiplier: DEFAULT_RUNNING_SPEED,
     selectedPopulationSize: DEFAULT_POPULATION_SIZE,
     selectedMutationRate: DEFAULT_MUTATION_RATE,
+    laneAwareInputsEnabled: true,
     lastActionMessage: 'Simulation ready.',
   };
   private showHudHelp = false;
@@ -183,6 +185,7 @@ export class Game implements Updatable, Renderable {
       populationSize: this.controlState.selectedPopulationSize,
       mutationAmount: this.controlState.selectedMutationRate,
       seedGenome: this.savedBrainRecord?.genome ?? null,
+      laneAwareInputsEnabled: this.controlState.laneAwareInputsEnabled,
     });
     this.heuristicCar = new Car(this.populationSpawnX, this.populationSpawnY, 42, 74, undefined, {
       controlMode: 'heuristic',
@@ -209,6 +212,9 @@ export class Game implements Updatable, Renderable {
       },
       onDriverModeChange: (mode: DriverMode) => {
         this.setSelectedDriverMode(mode);
+      },
+      onLaneAwareInputsEnabledChange: (enabled: boolean) => {
+        this.setLaneAwareInputsEnabled(enabled);
       },
       onTrafficEnabledChange: (enabled: boolean) => {
         this.setTrafficEnabled(enabled);
@@ -537,6 +543,7 @@ export class Game implements Updatable, Renderable {
     this.populationManager.reset({
       populationSize: this.controlState.selectedPopulationSize,
       mutationAmount: this.controlState.selectedMutationRate,
+      laneAwareInputsEnabled: this.controlState.laneAwareInputsEnabled,
     });
     this.synchronizeSimulationWorld();
     this.camera.reset(this.populationSpawnX, this.populationSpawnY);
@@ -785,6 +792,20 @@ export class Game implements Updatable, Renderable {
     this.controlState.lastActionMessage = `Driver mode set to ${formatDriverModeLabel(mode)}.`;
   }
 
+  private setLaneAwareInputsEnabled(enabled: boolean): void {
+    if (this.controlState.laneAwareInputsEnabled === enabled) {
+      return;
+    }
+
+    this.controlState.laneAwareInputsEnabled = enabled;
+    this.handleSavedBrainCompatibility();
+    this.restartSimulation(
+      enabled
+        ? 'Lane-aware inputs enabled. Population restarted.'
+        : 'Lane-aware inputs disabled. Population restarted.'
+    );
+  }
+
   private setTrafficEnabled(enabled: boolean): void {
     if (!enabled) {
       this.updateSelectedTrafficSettings(
@@ -889,12 +910,15 @@ export class Game implements Updatable, Renderable {
       speedMultiplier: this.getSimulationSpeedMultiplier(),
       selectedPopulationSize: this.controlState.selectedPopulationSize,
       selectedMutationRate: this.controlState.selectedMutationRate,
+      laneAwareInputsEnabled: this.controlState.laneAwareInputsEnabled,
       lastActionMessage: this.controlState.lastActionMessage,
     };
   }
 
   private buildRestartActionMessage(): string {
-    return `Restarted GEN ${this.populationManager.getStats().generation} @ ${this.getSimulationSpeedMultiplier()}x.`;
+    const laneInputsLabel = this.controlState.laneAwareInputsEnabled ? 'lane on' : 'lane off';
+
+    return `Restarted GEN ${this.populationManager.getStats().generation} @ ${this.getSimulationSpeedMultiplier()}x (${laneInputsLabel}).`;
   }
 
   private getSelectedCar(): Car {

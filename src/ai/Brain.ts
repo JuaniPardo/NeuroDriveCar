@@ -157,18 +157,26 @@ export class Brain {
   }
 }
 
-export function getBrainInputCount(sensorRayCount: number): number {
-  return sensorRayCount + BRAIN_LANE_AWARE_INPUT_LABELS.length;
+export function getBrainInputCount(
+  sensorRayCount: number,
+  laneAwareInputsEnabled = true
+): number {
+  return sensorRayCount + (laneAwareInputsEnabled ? BRAIN_LANE_AWARE_INPUT_LABELS.length : 0);
 }
 
-export function getBrainInputLabels(sensorRayCount: number): string[] {
+export function getBrainInputLabels(
+  sensorRayCount: number,
+  laneAwareInputsEnabled = true
+): string[] {
   const labels: string[] = [];
 
   for (let index = 0; index < sensorRayCount; index += 1) {
     labels.push(`sensorRay${index + 1}`);
   }
 
-  labels.push(...BRAIN_LANE_AWARE_INPUT_LABELS);
+  if (laneAwareInputsEnabled) {
+    labels.push(...BRAIN_LANE_AWARE_INPUT_LABELS);
+  }
 
   return labels;
 }

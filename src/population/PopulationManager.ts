@@ -53,12 +53,14 @@ export interface PopulationManagerOptions {
   generation?: number;
   mutationAmount?: number;
   seedGenome?: BrainGenome | null;
+  laneAwareInputsEnabled?: boolean;
 }
 
 export interface PopulationResetOptions {
   populationSize?: number;
   mutationAmount?: number;
   brainGenome?: BrainGenome | null;
+  laneAwareInputsEnabled?: boolean;
 }
 
 export interface PopulationStats {
@@ -123,6 +125,7 @@ export class PopulationManager {
   private generation = 1;
   private seedGenome: BrainGenome | null = null;
   private populationSource: PopulationSource = 'random';
+  private laneAwareInputsEnabled = true;
 
   public constructor(options: PopulationManagerOptions) {
     this.road = options.road;
@@ -131,6 +134,7 @@ export class PopulationManager {
     this.populationSize = Math.max(1, options.populationSize ?? DEFAULT_POPULATION_SIZE);
     this.generation = Math.max(1, options.generation ?? 1);
     this.mutationAmount = Math.max(0, options.mutationAmount ?? DEFAULT_MUTATION_AMOUNT);
+    this.laneAwareInputsEnabled = options.laneAwareInputsEnabled ?? true;
     this.setSeedGenome(options.seedGenome ?? null);
     this.stats = {
       populationSize: this.populationSize,
@@ -164,6 +168,10 @@ export class PopulationManager {
       this.setSeedGenome(options.brainGenome);
     }
 
+    if (options.laneAwareInputsEnabled !== undefined) {
+      this.laneAwareInputsEnabled = options.laneAwareInputsEnabled;
+    }
+
     this.clear();
     let activeSeedGenome = this.seedGenome;
     this.populationSource = activeSeedGenome === null ? 'random' : 'saved';
@@ -177,6 +185,7 @@ export class PopulationManager {
         DEFAULT_CAR_PHYSICS,
         {
           controlMode: 'ai',
+          laneAwareInputsEnabled: this.laneAwareInputsEnabled,
         }
       );
 

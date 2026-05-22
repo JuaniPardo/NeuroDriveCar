@@ -33,6 +33,7 @@ interface ControlsPanelCallbacks {
   onPopulationSizeChange: (size: PopulationSizeOption) => void;
   onMutationRateChange: (rate: MutationRateOption) => void;
   onDriverModeChange: (mode: DriverMode) => void;
+  onLaneAwareInputsEnabledChange: (enabled: boolean) => void;
   onTrafficEnabledChange: (enabled: boolean) => void;
   onTrafficPhaseChange: (phase: TrainingTrafficPhase) => void;
   onTrafficDensityChange: (density: TrafficDensity) => void;
@@ -59,6 +60,7 @@ export class ControlsPanel {
   private readonly populationSizeSelect: HTMLSelectElement;
   private readonly mutationRateSelect: HTMLSelectElement;
   private readonly driverModeSelect: HTMLSelectElement;
+  private readonly laneAwareInputsSelect: HTMLSelectElement;
   private readonly trafficEnabledSelect: HTMLSelectElement;
   private readonly trafficPhaseSelect: HTMLSelectElement;
   private readonly trafficDensitySelect: HTMLSelectElement;
@@ -108,6 +110,13 @@ export class ControlsPanel {
         <div class="controls-panel__section">
           <label class="controls-panel__label" for="driver-mode-select">Driver Mode</label>
           <select id="driver-mode-select" class="controls-panel__select"></select>
+        </div>
+        <div class="controls-panel__section">
+          <label class="controls-panel__label" for="lane-aware-inputs-select">Lane Inputs</label>
+          <select id="lane-aware-inputs-select" class="controls-panel__select">
+            <option value="true">Enabled</option>
+            <option value="false">Disabled</option>
+          </select>
         </div>
         <div class="controls-panel__section controls-panel__section--full">
           <p class="controls-panel__label">Traffic Settings</p>
@@ -176,6 +185,10 @@ export class ControlsPanel {
     this.driverModeSelect = getRequiredElement<HTMLSelectElement>(
       this.root,
       '#driver-mode-select'
+    );
+    this.laneAwareInputsSelect = getRequiredElement<HTMLSelectElement>(
+      this.root,
+      '#lane-aware-inputs-select'
     );
     this.trafficEnabledSelect = getRequiredElement<HTMLSelectElement>(
       this.root,
@@ -263,6 +276,7 @@ export class ControlsPanel {
     this.populationSizeSelect.value = String(snapshot.selectedPopulationSize);
     this.mutationRateSelect.value = snapshot.selectedMutationRate.toFixed(2);
     this.driverModeSelect.value = snapshot.selectedDriverMode;
+    this.laneAwareInputsSelect.value = String(snapshot.laneAwareInputsEnabled);
     this.trafficEnabledSelect.value = String(snapshot.selectedTrafficSettings.enabled);
     this.trafficPhaseSelect.value = snapshot.selectedTrafficSettings.phase;
     this.trafficDensitySelect.value = snapshot.selectedTrafficSettings.density;
@@ -422,6 +436,11 @@ export class ControlsPanel {
         this.callbacks.onDriverModeChange(target.value);
       }
 
+      return;
+    }
+
+    if (target === this.laneAwareInputsSelect) {
+      this.callbacks.onLaneAwareInputsEnabledChange(target.value === 'true');
       return;
     }
 
