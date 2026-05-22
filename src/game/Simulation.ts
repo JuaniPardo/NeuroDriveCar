@@ -1,3 +1,4 @@
+import { CurriculumManager } from '../training/CurriculumManager';
 import { Road } from '../world/Road';
 import { TrafficManager } from '../traffic/TrafficManager';
 import { PopulationManager } from '../population/PopulationManager';
@@ -68,6 +69,7 @@ export class Simulation {
   public readonly road: Road;
   public readonly trafficManager: TrafficManager;
   public readonly populationManager: PopulationManager;
+  public readonly curriculum = new CurriculumManager();
   public readonly manualCar: Car;
   public readonly heuristicCar: Car;
   public readonly camera: Camera;
@@ -182,6 +184,12 @@ export class Simulation {
 
     this.populationManager.refreshStats();
     this.recordImitationSample();
+
+    // Curriculum update
+    const stats = this.populationManager.getStats();
+    if (this.curriculum.update(stats.bestFitness)) {
+      this.trafficManager.setSettings(this.curriculum.getTrafficSettings());
+    }
 
     const followCar = this.getSelectedCar();
     this.camera.follow(followCar.x, followCar.y, deltaTimeSeconds);

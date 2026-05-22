@@ -24,7 +24,11 @@ import {
   type SensorConfig,
   type SensorHitSummary,
 } from '../sensors/Sensor';
-import { clamp, lerp } from '../utils/math';
+import {
+  LaneFollowingController,
+  type LaneFollowingControllerContext,
+} from '../controller/LaneFollowingController';
+import { clamp, lerp, normalizeAngle } from '../utils/math';
 import { THEME } from '../utils/visualTheme';
 import { Road } from '../world/Road';
 import { Controls } from './Controls';
@@ -93,6 +97,9 @@ export interface DrivingIntentState {
   sustainedSteerTime: number;
   steeringDirection: -1 | 0 | 1;
   recoveryTrend: number;
+  targetLane: number;
+  laneChangeProgress: number;
+  preferredSpeedRatio: number;
 }
 
 export type CarControlMode = DriverMode | 'traffic';
@@ -149,6 +156,7 @@ export class Car {
 
   private readonly controls: Controls;
   private readonly heuristicDriver: HeuristicDriver | null;
+  private readonly laneController = new LaneFollowingController();
   private readonly physics: CarPhysicsConfig;
   private controlMode: CarControlMode;
   private readonly trafficSpeed: number;
@@ -184,6 +192,9 @@ export class Car {
     sustainedSteerTime: 0,
     steeringDirection: 0,
     recoveryTrend: 0,
+    targetLane: 0,
+    laneChangeProgress: 0,
+    preferredSpeedRatio: 1,
   };
   private heuristicDebug: HeuristicDriverDebugSnapshot = {
     reason: 'clear-forward',
@@ -282,7 +293,9 @@ export class Car {
     }
 
     const throttleInput =
-      Number(this.controls.forward) - Number(this.controls.reverse);
+      this.controlMode === 'manual' 
+        ? (Number(this.controls.forward) - Number(this.controls.reverse))
+        : (this.drivingIntent.preferredSpeedRatio > 0.1 ? 1 : -1);
 
     this.speed = updateSpeed(
       this.speed,
@@ -755,7 +768,19 @@ export class Car {
     }
 
     if (this.controlMode === 'ai' && this.brain !== null) {
-      this.controls.applyState(this.brain.decide(this.brainInputs));
+      const decision = this.brain.decide(this.brainInputs);
+      this.controls.applyState(decision);
+
+      // Map AI tactical decisions to lane intent
+      if (decision.left) {
+        this.drivingIntent.targetLane = Math.max(0, this.drivingIntent.targetLane - 1);
+      } else if (decision.right) {
+        const road = this.sensorAwareness.road;
+        if (road) {
+          this.drivingIntent.targetLane = Math.min(road.laneCount - 1, this.drivingIntent.targetLane + 1);
+        }
+      }
+      this.drivingIntent.preferredSpeedRatio = decision.reverse ? 0.6 : 1.0;
       return;
     }
 
@@ -767,24 +792,29 @@ export class Car {
       return;
     }
 
-    this.controls.applyState(
-      this.heuristicDriver.decide({
-        x: this.x,
-        y: this.y,
-        angle: this.angle,
-        speed: this.speed,
-        road: this.lastRoadForAwareness,
-        laneCenterOffsetNormalized: this.laneAwareness.laneCenterOffsetNormalized,
-        headingErrorNormalized: this.laneAwareness.headingErrorNormalized,
-        currentLaneBlocked: this.laneAwareness.currentLaneBlocked,
-        leftLaneClear: this.laneAwareness.leftLaneClear,
-        rightLaneClear: this.laneAwareness.rightLaneClear,
-        frontObstacleDistance: this.sensorAwareness.frontObstacleDistance,
-        frontObstacleSignal: this.sensorAwareness.frontObstacleSignal,
-        edgeProximity: this.sensorAwareness.edgeProximity,
-      })
-    );
+    const decision = this.heuristicDriver.decide({
+      x: this.x,
+      y: this.y,
+      angle: this.angle,
+      speed: this.speed,
+      road: this.lastRoadForAwareness,
+      laneCenterOffsetNormalized: this.laneAwareness.laneCenterOffsetNormalized,
+      headingErrorNormalized: this.laneAwareness.headingErrorNormalized,
+      currentLaneBlocked: this.laneAwareness.currentLaneBlocked,
+      leftLaneClear: this.laneAwareness.leftLaneClear,
+      rightLaneClear: this.laneAwareness.rightLaneClear,
+      frontObstacleDistance: this.sensorAwareness.frontObstacleDistance,
+      frontObstacleSignal: this.sensorAwareness.frontObstacleSignal,
+      edgeProximity: this.sensorAwareness.edgeProximity,
+    });
+
+    this.controls.applyState(decision);
     this.heuristicDebug = this.heuristicDriver.getDebugSnapshot();
+
+    if (this.heuristicDebug.targetLane !== null) {
+      this.drivingIntent.targetLane = this.heuristicDebug.targetLane;
+    }
+    this.drivingIntent.preferredSpeedRatio = decision.reverse ? 0.6 : 1.0;
   }
 
   private getSteeringInput(): number {
@@ -792,34 +822,28 @@ export class Car {
       return Number(this.controls.right) - Number(this.controls.left);
     }
 
-    const rawSteerIntent = clamp(this.controls.steerIntent, -1, 1);
-    const targetSteerIntent =
-      Math.abs(rawSteerIntent) < AI_STEER_DEAD_ZONE ? 0 : rawSteerIntent;
-    const previousSmoothedSteer = this.drivingIntent.smoothedSteer;
-    const isReturningToNeutral =
-      targetSteerIntent === 0 && Math.abs(previousSmoothedSteer) > 0.001;
-    const isChangingDirection =
-      targetSteerIntent !== 0 &&
-      previousSmoothedSteer !== 0 &&
-      Math.sign(targetSteerIntent) !== Math.sign(previousSmoothedSteer);
-    const smoothingFactor = clamp(
-      this.aiControl.steeringSmoothing *
-        (isChangingDirection
-          ? AI_SIGN_CHANGE_SMOOTHING_MULTIPLIER
-          : isReturningToNeutral
-            ? AI_RECENTER_SMOOTHING_MULTIPLIER
-            : 1),
-      this.aiControl.steeringSmoothing,
-      MAX_DYNAMIC_SMOOTHING
-    );
+    if (this.lastRoadForAwareness === null) {
+      return 0;
+    }
 
+    const road = this.lastRoadForAwareness;
+    const targetLaneCenterX = road.getLaneCenter(this.drivingIntent.targetLane);
+    
+    // Use LaneFollowingController for physical stabilization
+    const steerIntent = this.laneController.calculateSteer({
+      vehicleX: this.x,
+      vehicleHeading: this.angle,
+      targetLaneCenterX,
+      roadWidth: road.width,
+      laneWidth: road.laneWidth,
+      edgeProximity: this.sensorAwareness.edgeProximity,
+      headingErrorNormalized: this.laneAwareness.headingErrorNormalized,
+    });
+
+    const previousSmoothedSteer = this.drivingIntent.smoothedSteer;
     this.drivingIntent.previousSteer = previousSmoothedSteer;
-    this.drivingIntent.steeringIntent = targetSteerIntent;
-    this.drivingIntent.smoothedSteer = lerp(
-      previousSmoothedSteer,
-      targetSteerIntent,
-      smoothingFactor
-    );
+    this.drivingIntent.steeringIntent = steerIntent;
+    this.drivingIntent.smoothedSteer = steerIntent; // Controller already does smoothing
 
     const steerMagnitude = Math.abs(this.drivingIntent.smoothedSteer);
     const steerDirection =
@@ -1047,6 +1071,10 @@ export class Car {
     this.drivingIntent.sustainedSteerTime = 0;
     this.drivingIntent.steeringDirection = 0;
     this.drivingIntent.recoveryTrend = 0;
+    this.drivingIntent.targetLane = 0;
+    this.drivingIntent.laneChangeProgress = 0;
+    this.drivingIntent.preferredSpeedRatio = 1;
+    this.laneController.reset();
   }
 
   private refreshAppearance(): void {

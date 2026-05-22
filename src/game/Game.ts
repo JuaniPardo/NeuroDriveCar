@@ -343,6 +343,7 @@ export class Game implements Updatable, Renderable {
       showAdvancedDiagnostics: this.showAdvancedDiagnostics,
       showNeuralVisualizer: this.showNeuralVisualizer,
       showControlsPanel: this.showControlsPanel,
+      curriculumPhase: this.simulation.curriculum.currentPhase.name,
     });
     this.controlsPanel.render({
       ...this.getControlSnapshot(),
@@ -771,6 +772,9 @@ export class Game implements Updatable, Renderable {
 
   private setSelectedDriverMode(mode: DriverMode): void {
     this.selectedDriverMode = mode;
+    this.simulation.setSelectedDriverMode(mode);
+    this.simulation.curriculum.reset();
+    this.simulation.trafficManager.setSettings(this.simulation.curriculum.getTrafficSettings());
     this.controlState.lastActionMessage = `Driver mode set to ${formatDriverModeLabel(mode)}.`;
   }
 

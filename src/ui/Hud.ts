@@ -74,6 +74,7 @@ export interface HudRenderData {
   showAdvancedDiagnostics: boolean;
   showNeuralVisualizer: boolean;
   showControlsPanel: boolean;
+  curriculumPhase: string;
 }
 
 interface HudRow {
@@ -124,7 +125,7 @@ export class Hud {
   private getMainPanelHeight(data: HudRenderData): number {
     const sectionCount = data.showAdvancedDiagnostics ? 6 : 5;
     const footerHeight = data.showHelp ? 112 : 54;
-    const headerHeight = 54;
+    const headerHeight = 66;
     const baseHeight =
       PANEL_PADDING * 2 +
       headerHeight +
@@ -300,11 +301,20 @@ export class Hud {
       `${data.showNeuralVisualizer ? 'VIZ' : 'NO VIZ'} / ${data.showControlsPanel ? 'CTRL' : 'NO CTRL'} / ${data.showAdvancedDiagnostics ? 'ADV' : 'BASIC'}`,
       THEME.hud.mutedTextColor
     );
+    this.renderKeyValueRow(
+      ctx,
+      x,
+      x + width,
+      y + 44,
+      'PHASE',
+      data.curriculumPhase.toUpperCase(),
+      THEME.hud.aiColor
+    );
 
     ctx.strokeStyle = THEME.hud.panelDivider;
     ctx.beginPath();
-    ctx.moveTo(x, y + 46.5);
-    ctx.lineTo(x + width, y + 46.5);
+    ctx.moveTo(x, y + 58.5);
+    ctx.lineTo(x + width, y + 58.5);
     ctx.stroke();
   }
 

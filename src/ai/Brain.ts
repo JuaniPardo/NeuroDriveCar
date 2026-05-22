@@ -22,10 +22,10 @@ export const BRAIN_LANE_AWARE_INPUT_LABELS = [
 ] as const;
 
 export const BRAIN_OUTPUT_LABELS = [
-  'forward',
-  'left',
-  'right',
-  'reverse',
+  'target-lane-keep',
+  'target-lane-left',
+  'target-lane-right',
+  'speed-slow',
 ] as const;
 
 export type BrainOutputLabel = (typeof BRAIN_OUTPUT_LABELS)[number];
@@ -71,35 +71,30 @@ export class Brain {
   }
 
   public decide(sensorInputs: readonly number[]): BrainDecision {
-    const binaryOutputs = this.network.feedForward(sensorInputs);
+    const outputs = this.network.feedForward(sensorInputs);
     const outputLayer = this.network.layers[this.network.layers.length - 1];
-    const visualOutputs = outputLayer?.visualOutputs ?? binaryOutputs;
+    const visualOutputs = outputLayer?.visualOutputs ?? outputs;
 
     for (let index = 0; index < this.lastOutputs.length; index += 1) {
       this.lastOutputs[index] = visualOutputs[index] ?? 0;
-      this.lastBinaryOutputs[index] = binaryOutputs[index] ?? 0;
+      this.lastBinaryOutputs[index] = outputs[index] ?? 0;
     }
 
-    const forwardVisual = visualOutputs[0] ?? 0;
-    const leftVisual = visualOutputs[1] ?? 0;
-    const rightVisual = visualOutputs[2] ?? 0;
-    const reverseVisual = visualOutputs[3] ?? 0;
-    const frontObstacleSignal = getCurrentLaneBlockedInput(sensorInputs);
-    const forward =
-      forwardVisual > reverseVisual &&
-      forwardVisual > FORWARD_OUTPUT_THRESHOLD;
-    const reverse =
-      reverseVisual > forwardVisual &&
-      reverseVisual > REVERSE_OUTPUT_THRESHOLD &&
-      frontObstacleSignal > REVERSE_OBSTACLE_GATE_THRESHOLD;
-    const left =
-      leftVisual > rightVisual && leftVisual > STEERING_OUTPUT_THRESHOLD;
-    const right =
-      rightVisual > leftVisual && rightVisual > STEERING_OUTPUT_THRESHOLD;
-    const rawSteerIntent = rightVisual - leftVisual;
+    const keepLaneVisual = visualOutputs[0] ?? 0;
+    const leftLaneVisual = visualOutputs[1] ?? 0;
+    const rightLaneVisual = visualOutputs[2] ?? 0;
+    const slowDownVisual = visualOutputs[3] ?? 0;
+
+    const left = leftLaneVisual > keepLaneVisual && leftLaneVisual > rightLaneVisual && leftLaneVisual > STEERING_OUTPUT_THRESHOLD;
+    const right = rightLaneVisual > keepLaneVisual && rightLaneVisual > leftLaneVisual && rightLaneVisual > STEERING_OUTPUT_THRESHOLD;
+    
+    // speed-slow is active if it's the strongest or above threshold
+    const reverse = slowDownVisual > FORWARD_OUTPUT_THRESHOLD;
+    const forward = !reverse;
+
+    const rawSteerIntent = rightLaneVisual - leftLaneVisual;
     this.lastRawSteerIntent = rawSteerIntent;
-    const steerIntent =
-      Math.abs(rawSteerIntent) < STEER_INTENT_DEAD_ZONE ? 0 : rawSteerIntent;
+    const steerIntent = Math.abs(rawSteerIntent) < STEER_INTENT_DEAD_ZONE ? 0 : rawSteerIntent;
 
     return {
       forward,
