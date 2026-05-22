@@ -8,9 +8,7 @@ import {
 const DEFAULT_HIDDEN_LAYER_SIZE = 6;
 const FORWARD_OUTPUT_THRESHOLD = 0.45;
 const STEERING_OUTPUT_THRESHOLD = 0.45;
-const REVERSE_OUTPUT_THRESHOLD = 0.6;
 const STEER_INTENT_DEAD_ZONE = 0.05;
-const REVERSE_OBSTACLE_GATE_THRESHOLD = 0.7;
 
 // Input order: all normalized sensor rays first, then lane-aware inputs.
 export const BRAIN_LANE_AWARE_INPUT_LABELS = [
@@ -173,14 +171,4 @@ export function getBrainInputLabels(sensorRayCount: number): string[] {
   labels.push(...BRAIN_LANE_AWARE_INPUT_LABELS);
 
   return labels;
-}
-
-function getCurrentLaneBlockedInput(inputs: readonly number[]): number {
-  const index = inputs.length - 3;
-
-  if (index < 0) {
-    return 0;
-  }
-
-  return inputs[index] ?? 0;
 }

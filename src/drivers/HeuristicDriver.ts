@@ -2,10 +2,6 @@ import type { ControlState } from '../car/Controls';
 import { clamp } from '../utils/math';
 import { Road } from '../world/Road';
 
-const EDGE_AVOID_WEIGHT = 1.35;
-const TARGET_LANE_WEIGHT = 0.95;
-const HEADING_ALIGN_WEIGHT = 0.45;
-const FRONT_BLOCK_WEIGHT = 0.7;
 const TARGET_LANE_REACHED_EPSILON = 0.18;
 const FRONT_OBSTACLE_BRAKE_DISTANCE = 26;
 const EDGE_DANGER_THRESHOLD = 0.72;

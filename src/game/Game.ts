@@ -37,6 +37,7 @@ import {
   type SavedBrainRecord,
 } from '../utils/storage';
 import { Road } from '../world/Road';
+import { CurriculumManager } from '../training/CurriculumManager';
 import { Camera } from './Camera';
 import { Loop } from './Loop';
 import type { Renderable, Updatable } from './types';
@@ -126,6 +127,7 @@ export class Game implements Updatable, Renderable {
   private readonly heuristicCar: Car;
   private readonly manualCar: Car;
   private readonly trafficManager: TrafficManager;
+  private readonly curriculum = new CurriculumManager();
   private readonly hud: Hud;
   private readonly controlsPanel: ControlsPanel;
   private readonly imitationRecorder = new ImitationRecorder();
@@ -343,7 +345,7 @@ export class Game implements Updatable, Renderable {
       showAdvancedDiagnostics: this.showAdvancedDiagnostics,
       showNeuralVisualizer: this.showNeuralVisualizer,
       showControlsPanel: this.showControlsPanel,
-      curriculumPhase: this.simulation.curriculum.currentPhase.name,
+      curriculumPhase: this.curriculum.currentPhase.name,
     });
     this.controlsPanel.render({
       ...this.getControlSnapshot(),
@@ -720,6 +722,12 @@ export class Game implements Updatable, Renderable {
     this.updateHeuristicBenchmark(deltaTimeSeconds);
     this.recordImitationSample();
 
+    // Curriculum update
+    const stats = this.populationManager.getStats();
+    if (this.curriculum.update(stats.bestFitness)) {
+      this.trafficManager.setSettings(this.curriculum.getTrafficSettings());
+    }
+
     const followCar = this.getSelectedCar();
 
     this.followTargetX = followCar.x;
@@ -772,9 +780,8 @@ export class Game implements Updatable, Renderable {
 
   private setSelectedDriverMode(mode: DriverMode): void {
     this.selectedDriverMode = mode;
-    this.simulation.setSelectedDriverMode(mode);
-    this.simulation.curriculum.reset();
-    this.simulation.trafficManager.setSettings(this.simulation.curriculum.getTrafficSettings());
+    this.curriculum.reset();
+    this.trafficManager.setSettings(this.curriculum.getTrafficSettings());
     this.controlState.lastActionMessage = `Driver mode set to ${formatDriverModeLabel(mode)}.`;
   }
 

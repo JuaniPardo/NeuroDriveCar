@@ -1,11 +1,11 @@
-import type { TrafficSettings } from '../traffic/TrafficManager';
+import { type TrafficSettings, type TrafficDensity } from '../traffic/trafficSettings';
 
 export type CurriculumPhase = 'road-only' | 'sparse-traffic' | 'normal-traffic' | 'dense-traffic';
 
 export interface PhaseConfig {
   name: CurriculumPhase;
   trafficEnabled: boolean;
-  trafficDensity: number;
+  trafficDensity: TrafficDensity;
   stabilityThreshold: number; // fitness/progress needed to advance
 }
 
@@ -13,25 +13,25 @@ export const CURRICULUM_PHASES: PhaseConfig[] = [
   {
     name: 'road-only',
     trafficEnabled: false,
-    trafficDensity: 0,
+    trafficDensity: 'none',
     stabilityThreshold: 5000,
   },
   {
     name: 'sparse-traffic',
     trafficEnabled: true,
-    trafficDensity: 0.15,
+    trafficDensity: 'sparse',
     stabilityThreshold: 8000,
   },
   {
     name: 'normal-traffic',
     trafficEnabled: true,
-    trafficDensity: 0.35,
+    trafficDensity: 'normal',
     stabilityThreshold: 12000,
   },
   {
     name: 'dense-traffic',
     trafficEnabled: true,
-    trafficDensity: 0.6,
+    trafficDensity: 'dense',
     stabilityThreshold: 20000,
   },
 ];
@@ -75,11 +75,14 @@ export class CurriculumManager {
     this.consecutiveStabilityCount = 0;
   }
 
-  public getTrafficSettings(): Partial<TrafficSettings> {
+  public getTrafficSettings(): TrafficSettings {
     const config = this.currentPhase;
     return {
       enabled: config.trafficEnabled,
       density: config.trafficDensity,
+      phase: config.name,
+      speedPreset: 'normal',
+      spawnDistancePreset: 'medium',
     };
   }
 }

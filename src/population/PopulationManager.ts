@@ -67,6 +67,7 @@ export interface PopulationStats {
   crashedCount: number;
   bestCarIndex: number;
   bestProgress: number;
+  bestFitness: number;
   generation: number;
   populationSource: PopulationSource;
   mutationAmount: number;
@@ -137,6 +138,7 @@ export class PopulationManager {
       crashedCount: 0,
       bestCarIndex: 0,
       bestProgress: 0,
+      bestFitness: 0,
       generation: this.generation,
       populationSource: this.populationSource,
       mutationAmount: this.mutationAmount,
@@ -395,12 +397,15 @@ export class PopulationManager {
     const selectedBestIndex = bestAliveIndex === -1 ? bestOverallIndex : bestAliveIndex;
     const selectedBestProgress =
       bestAliveIndex === -1 ? Math.max(0, bestOverallProgress) : Math.max(0, bestAliveProgress);
+    const selectedBestFitness =
+      bestAliveIndex === -1 ? bestOverallFitness : bestAliveFitness;
 
     this.stats.populationSize = this.cars.length;
     this.stats.aliveCount = aliveCount;
     this.stats.crashedCount = this.cars.length - aliveCount;
     this.stats.bestCarIndex = selectedBestIndex;
     this.stats.bestProgress = selectedBestProgress;
+    this.stats.bestFitness = selectedBestFitness;
     this.stats.populationSource = this.populationSource;
   }
 

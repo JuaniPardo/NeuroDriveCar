@@ -27,6 +27,8 @@ interface TrafficVehicle {
   readonly laneIndex: number;
 }
 
+export { type TrafficSettings } from './trafficSettings';
+
 export class TrafficManager {
   private readonly road: Road;
   private readonly vehicles: TrafficVehicle[] = [];

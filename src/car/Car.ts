@@ -26,9 +26,8 @@ import {
 } from '../sensors/Sensor';
 import {
   LaneFollowingController,
-  type LaneFollowingControllerContext,
 } from '../controller/LaneFollowingController';
-import { clamp, lerp, normalizeAngle } from '../utils/math';
+import { clamp } from '../utils/math';
 import { THEME } from '../utils/visualTheme';
 import { Road } from '../world/Road';
 import { Controls } from './Controls';
@@ -52,10 +51,6 @@ const CURRENT_LANE_BLOCKED_DISTANCE = 160;
 const ADJACENT_LANE_AHEAD_CLEARANCE_DISTANCE = 190;
 const ADJACENT_LANE_REAR_CLEARANCE_DISTANCE = 96;
 const STRONG_STEER_THRESHOLD = 0.3;
-const AI_STEER_DEAD_ZONE = 0.1;
-const AI_RECENTER_SMOOTHING_MULTIPLIER = 1.55;
-const AI_SIGN_CHANGE_SMOOTHING_MULTIPLIER = 1.8;
-const MAX_DYNAMIC_SMOOTHING = 0.34;
 
 export interface LaneAwarenessSnapshot {
   laneCenterOffsetNormalized: number;
@@ -71,6 +66,7 @@ export interface SensorAwarenessSnapshot {
   frontObstacleSignal: number;
   edgeProximity: number;
   hitSummary: SensorHitSummary;
+  road: Road | null;
 }
 
 export interface SteeringDebugSnapshot {
@@ -184,6 +180,7 @@ export class Car {
       traffic: 0,
       none: 0,
     },
+    road: null,
   };
   private drivingIntent: DrivingIntentState = {
     steeringIntent: 0,
@@ -931,6 +928,7 @@ export class Car {
 
   private updateSensorAwareness(road: Road | null): void {
     if (this.sensor === null) {
+      this.sensorAwareness.road = road;
       return;
     }
 
@@ -969,6 +967,7 @@ export class Car {
           : clamp(1 - frontObstacleDistance / CURRENT_LANE_BLOCKED_DISTANCE, 0, 1),
       edgeProximity: road === null ? 0 : road.getBorderProximitySignal(this.x),
       hitSummary: this.sensor.getHitSummary(),
+      road,
     };
   }
 
