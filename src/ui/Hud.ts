@@ -90,7 +90,7 @@ export class Hud {
   }
 
   public render(ctx: CanvasRenderingContext2D, data: HudRenderData): void {
-    const mainPanelWidth = Math.min(350, Math.max(300, data.width * 0.26));
+    const mainPanelWidth = Math.min(320, Math.max(260, data.width * 0.22));
     const mainPanelHeight = this.getMainPanelHeight(data);
 
     this.renderMainPanel(
@@ -103,13 +103,17 @@ export class Hud {
     );
 
     if (data.showNeuralVisualizer) {
-      const neuralPanelWidth = Math.min(400, Math.max(300, data.width * 0.22));
-      const neuralPanelHeight = Math.min(360, Math.max(292, data.height * 0.34));
+      const neuralPanelWidth = 400;
+      const neuralPanelHeight = Math.min(750, data.height - PANEL_MARGIN * 2);
+
+      const xPos = data.width - neuralPanelWidth - PANEL_MARGIN;
+      const isOverlapping = PANEL_MARGIN + mainPanelWidth > xPos;
+      const finalY = isOverlapping ? PANEL_MARGIN + mainPanelHeight + PANEL_MARGIN : PANEL_MARGIN;
 
       this.neuralVisualizer.render(
         ctx,
-        data.width - neuralPanelWidth - PANEL_MARGIN,
-        PANEL_MARGIN,
+        xPos,
+        finalY,
         neuralPanelWidth,
         neuralPanelHeight,
         data.brainSnapshot
@@ -119,8 +123,8 @@ export class Hud {
 
   private getMainPanelHeight(data: HudRenderData): number {
     const sectionCount = data.showAdvancedDiagnostics ? 6 : 5;
-    const footerHeight = data.showHelp ? 92 : 42;
-    const headerHeight = 48;
+    const footerHeight = data.showHelp ? 112 : 54;
+    const headerHeight = 54;
     const baseHeight =
       PANEL_PADDING * 2 +
       headerHeight +
@@ -141,7 +145,7 @@ export class Hud {
   ): void {
     const contentX = x + PANEL_PADDING;
     const contentWidth = width - PANEL_PADDING * 2;
-    const footerHeight = data.showHelp ? 92 : 42;
+    const footerHeight = data.showHelp ? 112 : 54;
     const footerY = y + height - footerHeight - PANEL_PADDING;
 
     ctx.save();
@@ -153,7 +157,7 @@ export class Hud {
 
     this.renderHeader(ctx, contentX, y + PANEL_PADDING, contentWidth, data);
 
-    let cursorY = y + PANEL_PADDING + 48;
+    let cursorY = y + PANEL_PADDING + 54;
 
     cursorY = this.renderSectionBox(
       ctx,
@@ -273,16 +277,16 @@ export class Hud {
     data: HudRenderData
   ): void {
     ctx.fillStyle = THEME.hud.textColor;
-    ctx.font = `9px ${FONT_MONO}`;
+    ctx.font = `11px ${FONT_MONO}`;
     ctx.textBaseline = 'top';
     ctx.fillText(`DRIVER: ${formatDriverModeLabel(data.selectedDriverMode).toUpperCase()}`, x, y);
 
-    this.renderKeyValueRow(ctx, x, x + width * 0.45, y + 18, 'FPS', formatValue(data.framesPerSecond, 1));
+    this.renderKeyValueRow(ctx, x, x + width * 0.45, y + 20, 'FPS', formatValue(data.framesPerSecond, 1));
     this.renderKeyValueRow(
       ctx,
       x + width * 0.48,
       x + width,
-      y + 18,
+      y + 20,
       'MODE',
       formatDriverModeLabel(data.selectedDriverMode).toUpperCase(),
       data.controlMode === 'ai' ? THEME.hud.aiColor : THEME.hud.valueColor
@@ -291,7 +295,7 @@ export class Hud {
       ctx,
       x,
       x + width,
-      y + 30,
+      y + 32,
       'VIEW',
       `${data.showNeuralVisualizer ? 'VIZ' : 'NO VIZ'} / ${data.showControlsPanel ? 'CTRL' : 'NO CTRL'} / ${data.showAdvancedDiagnostics ? 'ADV' : 'BASIC'}`,
       THEME.hud.mutedTextColor
@@ -299,8 +303,8 @@ export class Hud {
 
     ctx.strokeStyle = THEME.hud.panelDivider;
     ctx.beginPath();
-    ctx.moveTo(x, y + 42.5);
-    ctx.lineTo(x + width, y + 42.5);
+    ctx.moveTo(x, y + 46.5);
+    ctx.lineTo(x + width, y + 46.5);
     ctx.stroke();
   }
 
@@ -313,9 +317,9 @@ export class Hud {
     rows: readonly HudRow[],
     sensorReadings?: readonly number[]
   ): number {
-    const rowHeight = 11;
-    const sensorHeight = sensorReadings === undefined ? 0 : 14;
-    const height = 20 + sensorHeight + rows.length * rowHeight + 6;
+    const rowHeight = 13;
+    const sensorHeight = sensorReadings === undefined ? 0 : 16;
+    const height = 24 + sensorHeight + rows.length * rowHeight + 6;
 
     ctx.fillStyle = THEME.hud.panelBackgroundStrong;
     ctx.strokeStyle = THEME.hud.panelBorder;
@@ -324,15 +328,15 @@ export class Hud {
     ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
 
     ctx.fillStyle = THEME.hud.sectionLabelColor;
-    ctx.font = `7px ${FONT_MONO}`;
+    ctx.font = `8px ${FONT_MONO}`;
     ctx.textBaseline = 'top';
-    ctx.fillText(label, x + 10, y + 7);
+    ctx.fillText(label, x + 10, y + 8);
 
-    let cursorY = y + 19;
+    let cursorY = y + 22;
 
     if (sensorReadings !== undefined) {
       this.renderSensorStrip(ctx, x + 10, cursorY, width - 20, sensorReadings);
-      cursorY += 16;
+      cursorY += 18;
     }
 
     for (const currentRow of rows) {
@@ -366,34 +370,34 @@ export class Hud {
     ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
 
     ctx.fillStyle = THEME.hud.sectionLabelColor;
-    ctx.font = `7px ${FONT_MONO}`;
-    ctx.textBaseline = 'top';
-    ctx.fillText(data.showHelp ? 'HELP' : 'STATUS', x + 10, y + 7);
-
     ctx.font = `8px ${FONT_MONO}`;
+    ctx.textBaseline = 'top';
+    ctx.fillText(data.showHelp ? 'HELP' : 'STATUS', x + 10, y + 8);
+
+    ctx.font = `9px ${FONT_MONO}`;
     ctx.fillStyle = THEME.hud.mutedTextColor;
-    ctx.fillText(`IO ${truncateStatusMessage(data.persistenceMessage, 40)}`, x + 10, y + 19);
-    ctx.fillText(`MSG ${truncateStatusMessage(data.lastControlAction, 38)}`, x + 10, y + 31);
+    ctx.fillText(`IO ${truncateStatusMessage(data.persistenceMessage, 40)}`, x + 10, y + 22);
+    ctx.fillText(`MSG ${truncateStatusMessage(data.lastControlAction, 38)}`, x + 10, y + 36);
 
     if (!data.showHelp) {
-      ctx.fillText('H help  M driver  D adv  V viz  C ctrl', x + 10, y + 43);
+      ctx.fillText('H help  M driver  D adv  V viz  C ctrl', x + 10, y + 50);
       return;
     }
 
     ctx.fillText(
       `SAVE ${formatSavedBrainStatus(data.savedBrainExists, data.savedBrainCompatible, data.savedBestDistance)}`,
       x + 10,
-      y + 43
+      y + 50
     );
     ctx.fillText(
       `TRAF ${truncateStatusMessage(formatTrafficSettingsLabel(data.selectedTrafficSettings), 28)}  SRC ${data.populationSource.toUpperCase()}`,
       x + 10,
-      y + 55
+      y + 64
     );
     ctx.fillText(
       `A/H ${formatRatioLabel(data.aiHeuristicRatio)}  REC ${formatValue(data.mutationAmount, 2)}  LANE ${truncateStatusMessage(data.laneSpeedLabel, 14)}`,
       x + 10,
-      y + 67
+      y + 78
     );
   }
 
@@ -406,7 +410,7 @@ export class Hud {
     value: string,
     valueColor: string = THEME.hud.valueColor
   ): void {
-    ctx.font = `8px ${FONT_MONO}`;
+    ctx.font = `10px ${FONT_MONO}`;
     ctx.textAlign = 'left';
     ctx.fillStyle = THEME.hud.mutedTextColor;
     ctx.fillText(truncateStatusMessage(label, 8), labelX, y);

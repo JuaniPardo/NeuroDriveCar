@@ -25,22 +25,22 @@ export class NeuralVisualizer {
     this.renderPanel(ctx, x, y, width, height);
 
     ctx.save();
-    ctx.font = `11px ${FONT_MONO}`;
+    ctx.font = `12px ${FONT_MONO}`;
     ctx.textBaseline = 'top';
     ctx.fillStyle = THEME.neural.panelTitleColor;
-    ctx.fillText('NEURAL VISUALIZER', x + 16, y + 14);
+    ctx.fillText('NEURAL VISUALIZER', x + 20, y + 16);
     ctx.fillStyle = THEME.neural.panelSubtitleColor;
     ctx.fillText(
       snapshot === null
         ? 'inputs / hidden / outputs'
         : `${snapshot.inputs.length} inputs / hidden / outputs`,
-      x + 16,
-      y + 32
+      x + 20,
+      y + 36
     );
 
     if (snapshot === null) {
       ctx.fillStyle = THEME.neural.outputLabelColor;
-      ctx.fillText('No brain data available.', x + 16, y + 62);
+      ctx.fillText('No brain data available.', x + 20, y + 66);
       ctx.restore();
       return;
     }
@@ -64,14 +64,14 @@ export class NeuralVisualizer {
       },
     ];
 
-    const layoutTop = y + 74;
-    const layoutBottom = y + height - 24;
-    const layerXs = this.getLayerXs(x + 40, x + width - 42, layers.length);
+    const layoutTop = y + 84;
+    const layoutBottom = y + height - 48;
+    const layerXs = this.getLayerXs(x + 72, x + width - 72, layers.length);
     const layerNodePositions = layers.map((layer, index) =>
       this.getLayerNodePositions(
         layerXs[index],
-        layoutTop + 12,
-        layoutBottom - 8,
+        layoutTop + 24,
+        layoutBottom - 24,
         layer.activations.length
       )
     );
@@ -191,7 +191,7 @@ export class NeuralVisualizer {
     activation: number,
     label: string | null
   ): void {
-    const radius = label === null ? 9 : 11;
+    const radius = label === null ? 11 : 14;
     const intensity = clamp(activation, 0, 1);
 
     ctx.fillStyle = THEME.neural.nodeHaloColor;
@@ -213,7 +213,7 @@ export class NeuralVisualizer {
     ctx.fill();
 
     ctx.strokeStyle = THEME.neural.nodeBorderColor;
-    ctx.lineWidth = 1.25;
+    ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.arc(node.x, node.y, radius, 0, Math.PI * 2);
     ctx.stroke();
@@ -221,7 +221,7 @@ export class NeuralVisualizer {
     ctx.fillStyle = THEME.neural.outputLabelColor;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = label === null ? `9px ${FONT_MONO}` : `10px ${FONT_MONO}`;
+    ctx.font = label === null ? `10px ${FONT_MONO}` : `12px ${FONT_MONO}`;
     ctx.fillText(label ?? activation.toFixed(2), node.x, node.y);
   }
 }

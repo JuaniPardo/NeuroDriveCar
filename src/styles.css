@@ -47,10 +47,10 @@ canvas {
   transform: translateX(-50%);
   bottom: 16px;
   z-index: 2;
-  width: min(332px, calc(100vw - 32px));
+  width: min(480px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
   overflow: auto;
-  padding: 12px;
+  padding: 16px;
   border: 1px solid var(--panel-border);
   background:
     linear-gradient(180deg, var(--panel-fill-top) 0%, var(--panel-fill-bottom) 100%);
@@ -62,10 +62,24 @@ canvas {
   display: none;
 }
 
+.controls-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.controls-panel__grid--traffic {
+  grid-template-columns: repeat(3, 1fr);
+}
+
 .controls-panel__header,
 .controls-panel__section,
 .controls-panel__feedback {
-  margin-bottom: 10px;
+  margin-bottom: 8px;
+}
+
+.controls-panel__section--full {
+  grid-column: 1 / -1;
 }
 
 .controls-panel__eyebrow,
@@ -73,14 +87,14 @@ canvas {
 .controls-panel__hint {
   margin: 0;
   color: var(--panel-muted);
-  font-size: 9px;
-  letter-spacing: 0.12em;
+  font-size: 8px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .controls-panel__title {
-  margin: 2px 0 0;
-  font-size: 16px;
+  margin: 1px 0 0;
+  font-size: 14px;
   font-weight: 600;
   color: var(--panel-bright);
 }
@@ -92,9 +106,10 @@ canvas {
 }
 
 .controls-panel__stack {
-  display: grid;
-  gap: 8px;
-  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
 }
 
 .controls-panel__field {
@@ -110,7 +125,7 @@ canvas {
 
 .controls-panel__speed-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin-top: 6px;
+  margin-top: 4px;
 }
 
 .controls-panel__button,
@@ -124,8 +139,8 @@ canvas {
 
 .controls-panel__button,
 .controls-panel__speed-button {
-  min-height: 34px;
-  padding: 0 10px;
+  min-height: 30px;
+  padding: 0 8px;
   cursor: pointer;
   transition:
     border-color 140ms ease,
@@ -155,9 +170,9 @@ canvas {
 
 .controls-panel__select {
   width: 100%;
-  min-height: 34px;
-  margin-top: 6px;
-  padding: 0 10px;
+  min-height: 30px;
+  margin-top: 4px;
+  padding: 0 8px;
 }
 
 .controls-panel__section--status {
@@ -167,12 +182,22 @@ canvas {
   border-top: 1px solid rgba(127, 224, 196, 0.1);
 }
 
+.controls-panel__status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px 12px;
+}
+
 .controls-panel__status-row {
   display: flex;
   justify-content: space-between;
   gap: 10px;
   color: var(--panel-bright);
   font-size: 10px;
+}
+
+.controls-panel__status-row--full {
+  grid-column: 1 / -1;
 }
 
 .controls-panel__feedback {

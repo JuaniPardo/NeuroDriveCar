@@ -86,63 +86,71 @@ export class ControlsPanel {
         <p class="controls-panel__eyebrow">SIMULATION CONTROLS</p>
         <h2 class="controls-panel__title">Training Sandbox</h2>
       </div>
-      <div class="controls-panel__actions">
-        <button type="button" class="controls-panel__button" data-action="toggle-pause"></button>
-        <button type="button" class="controls-panel__button controls-panel__button--secondary" data-action="restart">Restart Run</button>
-      </div>
-      <div class="controls-panel__section">
-        <p class="controls-panel__label">Simulation Speed</p>
-        <div class="controls-panel__speed-grid"></div>
-      </div>
-      <div class="controls-panel__section">
-        <label class="controls-panel__label" for="population-size-select">Population Size</label>
-        <select id="population-size-select" class="controls-panel__select"></select>
-      </div>
-      <div class="controls-panel__section">
-        <label class="controls-panel__label" for="mutation-rate-select">Mutation Rate</label>
-        <select id="mutation-rate-select" class="controls-panel__select"></select>
-      </div>
-      <div class="controls-panel__section">
-        <label class="controls-panel__label" for="driver-mode-select">Driver Mode</label>
-        <select id="driver-mode-select" class="controls-panel__select"></select>
-      </div>
-      <div class="controls-panel__section">
-        <p class="controls-panel__label">Traffic Settings</p>
-        <div class="controls-panel__stack">
-          <label class="controls-panel__field" for="traffic-phase-select">
-            <span>Training Phase</span>
-            <select id="traffic-phase-select" class="controls-panel__select"></select>
-          </label>
-          <label class="controls-panel__field" for="traffic-enabled-select">
-            <span>Traffic Enabled</span>
-            <select id="traffic-enabled-select" class="controls-panel__select">
-              <option value="true">Enabled</option>
-              <option value="false">Disabled</option>
-            </select>
-          </label>
-          <label class="controls-panel__field" for="traffic-density-select">
-            <span>Traffic Density</span>
-            <select id="traffic-density-select" class="controls-panel__select"></select>
-          </label>
-          <label class="controls-panel__field" for="traffic-speed-select">
-            <span>Traffic Speed</span>
-            <select id="traffic-speed-select" class="controls-panel__select"></select>
-          </label>
-          <label class="controls-panel__field" for="traffic-spawn-select">
-            <span>Spawn Distance</span>
-            <select id="traffic-spawn-select" class="controls-panel__select"></select>
-          </label>
+      <div class="controls-panel__grid">
+        <div class="controls-panel__section controls-panel__section--full">
+          <div class="controls-panel__actions">
+            <button type="button" class="controls-panel__button" data-action="toggle-pause"></button>
+            <button type="button" class="controls-panel__button controls-panel__button--secondary" data-action="restart">Restart Run</button>
+          </div>
         </div>
-      </div>
-      <div class="controls-panel__section controls-panel__section--status">
-        <div class="controls-panel__status-row"><span>Run</span><span data-field="run"></span></div>
-        <div class="controls-panel__status-row"><span>Active Pop</span><span data-field="active-population"></span></div>
-        <div class="controls-panel__status-row"><span>Active Mut</span><span data-field="active-mutation"></span></div>
-        <div class="controls-panel__status-row"><span>Driver</span><span data-field="active-driver"></span></div>
-        <div class="controls-panel__status-row"><span>Source</span><span data-field="population-source"></span></div>
-        <div class="controls-panel__status-row"><span>Saved Brain</span><span data-field="saved-brain"></span></div>
-        <div class="controls-panel__status-row"><span>Traffic Phase</span><span data-field="active-traffic-phase"></span></div>
-        <div class="controls-panel__status-row"><span>Traffic</span><span data-field="active-traffic-summary"></span></div>
+        <div class="controls-panel__section">
+          <p class="controls-panel__label">Simulation Speed</p>
+          <div class="controls-panel__speed-grid"></div>
+        </div>
+        <div class="controls-panel__section">
+          <label class="controls-panel__label" for="population-size-select">Population Size</label>
+          <select id="population-size-select" class="controls-panel__select"></select>
+        </div>
+        <div class="controls-panel__section">
+          <label class="controls-panel__label" for="mutation-rate-select">Mutation Rate</label>
+          <select id="mutation-rate-select" class="controls-panel__select"></select>
+        </div>
+        <div class="controls-panel__section">
+          <label class="controls-panel__label" for="driver-mode-select">Driver Mode</label>
+          <select id="driver-mode-select" class="controls-panel__select"></select>
+        </div>
+        <div class="controls-panel__section controls-panel__section--full">
+          <p class="controls-panel__label">Traffic Settings</p>
+          <div class="controls-panel__stack">
+            <div class="controls-panel__grid controls-panel__grid--traffic">
+              <label class="controls-panel__field" for="traffic-phase-select">
+                <span class="controls-panel__hint">Training Phase</span>
+                <select id="traffic-phase-select" class="controls-panel__select"></select>
+              </label>
+              <label class="controls-panel__field" for="traffic-enabled-select">
+                <span class="controls-panel__hint">Traffic Enabled</span>
+                <select id="traffic-enabled-select" class="controls-panel__select">
+                  <option value="true">Enabled</option>
+                  <option value="false">Disabled</option>
+                </select>
+              </label>
+              <label class="controls-panel__field" for="traffic-density-select">
+                <span class="controls-panel__hint">Traffic Density</span>
+                <select id="traffic-density-select" class="controls-panel__select"></select>
+              </label>
+              <label class="controls-panel__field" for="traffic-speed-select">
+                <span class="controls-panel__hint">Traffic Speed</span>
+                <select id="traffic-speed-select" class="controls-panel__select"></select>
+              </label>
+              <label class="controls-panel__field" for="traffic-spawn-select">
+                <span class="controls-panel__hint">Spawn Distance</span>
+                <select id="traffic-spawn-select" class="controls-panel__select"></select>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="controls-panel__section controls-panel__section--full controls-panel__section--status">
+          <div class="controls-panel__status-grid">
+            <div class="controls-panel__status-row"><span class="controls-panel__hint">Run</span><span data-field="run"></span></div>
+            <div class="controls-panel__status-row"><span class="controls-panel__hint">Active Pop</span><span data-field="active-population"></span></div>
+            <div class="controls-panel__status-row"><span class="controls-panel__hint">Active Mut</span><span data-field="active-mutation"></span></div>
+            <div class="controls-panel__status-row"><span class="controls-panel__hint">Driver</span><span data-field="active-driver"></span></div>
+            <div class="controls-panel__status-row"><span class="controls-panel__hint">Source</span><span data-field="population-source"></span></div>
+            <div class="controls-panel__status-row"><span class="controls-panel__hint">Saved Brain</span><span data-field="saved-brain"></span></div>
+            <div class="controls-panel__status-row controls-panel__status-row--full"><span class="controls-panel__hint">Traffic Phase</span><span data-field="active-traffic-phase"></span></div>
+            <div class="controls-panel__status-row controls-panel__status-row--full"><span class="controls-panel__hint">Traffic Summary</span><span data-field="active-traffic-summary"></span></div>
+          </div>
+        </div>
       </div>
       <p class="controls-panel__feedback" data-field="feedback"></p>
       <p class="controls-panel__hint">Keys: H help, M driver, P pause, R restart, 1-4 speed, [ ] population, - / = mutation</p>
