@@ -36,7 +36,7 @@ export const DEFAULT_SENSOR_CONFIG: SensorConfig = {
   rayCount: 5,
   rayLength: 180,
   // Keep perception focused on the forward corridor to reduce noisy side stimuli.
-  rayAnglesDeg: [-37.5, -18.75, 0, 18.75, 37.5],
+  rayAnglesDeg: [-45, -22.5, 0, 22.5, 45],
 };
 
 interface SensorRayDefinition {
