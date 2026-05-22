@@ -39,13 +39,11 @@ export function remapClamped(
 }
 
 export function normalizeAngle(angle: number): number {
-  let normalizedAngle = angle;
+  let normalizedAngle = angle % (Math.PI * 2);
 
-  while (normalizedAngle > Math.PI) {
+  if (normalizedAngle > Math.PI) {
     normalizedAngle -= Math.PI * 2;
-  }
-
-  while (normalizedAngle < -Math.PI) {
+  } else if (normalizedAngle < -Math.PI) {
     normalizedAngle += Math.PI * 2;
   }
 

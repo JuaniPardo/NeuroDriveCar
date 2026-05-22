@@ -77,14 +77,16 @@ export function getPolygonIntersection(
   secondPolygon: readonly Point[]
 ): Intersection | null {
   for (let firstIndex = 0; firstIndex < firstPolygon.length; firstIndex += 1) {
-    const firstSegment = createPolygonEdge(firstPolygon, firstIndex);
+    getPolygonEdge(firstPolygon, firstIndex, SHARED_EDGE);
+    const firstSegment = { ...SHARED_EDGE };
 
     for (
       let secondIndex = 0;
       secondIndex < secondPolygon.length;
       secondIndex += 1
     ) {
-      const secondSegment = createPolygonEdge(secondPolygon, secondIndex);
+      getPolygonEdge(secondPolygon, secondIndex, SHARED_EDGE);
+      const secondSegment = { ...SHARED_EDGE };
       const intersection = getSegmentIntersection(firstSegment, secondSegment);
 
       if (intersection !== null) {
@@ -104,13 +106,25 @@ export function getPolygonIntersection(
   return null;
 }
 
+function getPolygonEdge(
+  polygon: readonly Point[],
+  index: number,
+  target: Segment
+): void {
+  const nextIndex = (index + 1) % polygon.length;
+  target.start = polygon[index];
+  target.end = polygon[nextIndex];
+}
+
+const SHARED_EDGE: Segment = { start: { x: 0, y: 0 }, end: { x: 0, y: 0 } };
+
 export function getPolygonSegmentIntersection(
   polygon: readonly Point[],
   segment: Segment
 ): Intersection | null {
   for (let index = 0; index < polygon.length; index += 1) {
-    const polygonEdge = createPolygonEdge(polygon, index);
-    const intersection = getSegmentIntersection(polygonEdge, segment);
+    getPolygonEdge(polygon, index, SHARED_EDGE);
+    const intersection = getSegmentIntersection(SHARED_EDGE, segment);
 
     if (intersection !== null) {
       return intersection;
@@ -155,8 +169,8 @@ export function getNearestPolygonSegmentIntersection(
   let nearestIntersection: Intersection | null = null;
 
   for (let index = 0; index < polygon.length; index += 1) {
-    const polygonEdge = createPolygonEdge(polygon, index);
-    const intersection = getSegmentIntersection(polygonEdge, segment);
+    getPolygonEdge(polygon, index, SHARED_EDGE);
+    const intersection = getSegmentIntersection(SHARED_EDGE, segment);
 
     if (intersection === null) {
       continue;
@@ -213,14 +227,3 @@ export function isPointInsidePolygon(
   return isInside;
 }
 
-function createPolygonEdge(
-  polygon: readonly Point[],
-  index: number
-): Segment {
-  const nextIndex = (index + 1) % polygon.length;
-
-  return {
-    start: polygon[index],
-    end: polygon[nextIndex],
-  };
-}
